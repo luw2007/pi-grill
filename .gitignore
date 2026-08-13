@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Local agent/runtime state
+.pi/
+.superpowers/
+
+# Logs and temporary files
+*.log
+*.tmp
+.DS_Store
+
+# Environment files
+.env
+.env.*
+!.env.example
