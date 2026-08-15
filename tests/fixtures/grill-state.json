@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "content": "isolated migration fixture",
+  "cwd": "/tmp/grill-fixture",
+  "createdAt": "2026-08-12T00:00:00.000Z",
+  "updatedAt": "2026-08-12T00:00:01.000Z",
+  "sections": {
+    "1. Background": "conclusion one",
+    "2. Goals": "conclusion two",
+    "3. Findings": "",
+    "4. Design": "",
+    "5. Alternatives": "",
+    "6. Interfaces": "",
+    "7. Risks": "",
+    "8. Testing": "",
+    "9. Rollback": "",
+    "10. Open questions": ""
+  },
+  "questions": [
+    {
+      "id": "Q1",
+      "section": "1. Background",
+      "status": "current",
+      "question": "Localized question?",
+      "options": [
+        {
+          "value": "A",
+          "label": "Option one"
+        },
+        {
+          "value": "B",
+          "label": "Option two"
+        }
+      ]
+    },
+    {
+      "id": "Q2",
+      "section": "2. Goals",
+      "status": "pending",
+      "question": "Second?",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes"
+        }
+      ]
+    },
+    {
+      "id": "Q3",
+      "section": "3. Findings",
+      "status": "answered",
+      "question": "Pinned?",
+      "options": [
+        {
+          "value": "ok",
+          "label": "OK"
+        }
+      ],
+      "userChoice": "OK",
+      "reason": "fidelity reason",
+      "pinned": {
+        "question": "Pinned?",
+        "options": [
+          {
+            "value": "ok",
+            "label": "OK"
+          }
+        ],
+        "section": "3. Findings"
+      }
+    },
+    {
+      "id": "Q4",
+      "section": "4. Design",
+      "status": "deprecated",
+      "question": "Deprecated?",
+      "options": [
+        {
+          "value": "old",
+          "label": "Old"
+        }
+      ],
+      "userChoice": "Old",
+      "reason": "old reason",
+      "statusNote": "superseded",
+      "pinned": {
+        "question": "Deprecated?",
+        "options": [
+          {
+            "value": "old",
+            "label": "Old"
+          }
+        ],
+        "section": "4. Design"
+      }
+    },
+    {
+      "id": "Q5",
+      "section": "5. Alternatives",
+      "status": "removed",
+      "question": "Removed?",
+      "options": [
+        {
+          "value": "drop",
+          "label": "Drop"
+        }
+      ],
+      "statusNote": "withdrawn"
+    },
+    {
+      "id": "Q6",
+      "section": "6. Interfaces",
+      "status": "pending",
+      "question": "Question six?",
+      "options": [
+        {
+          "value": "six",
+          "label": "Six"
+        }
+      ]
+    },
+    {
+      "id": "Q7",
+      "section": "7. Risks",
+      "status": "pending",
+      "question": "Question seven?",
+      "options": [
+        {
+          "value": "seven",
+          "label": "Seven"
+        }
+      ]
+    },
+    {
+      "id": "Q8",
+      "section": "8. Testing",
+      "status": "pending",
+      "question": "Question eight?",
+      "options": [
+        {
+          "value": "eight",
+          "label": "Eight"
+        }
+      ]
+    },
+    {
+      "id": "Q9",
+      "section": "9. Rollback",
+      "status": "pending",
+      "question": "Question nine?",
+      "options": [
+        {
+          "value": "nine",
+          "label": "Nine"
+        }
+      ]
+    },
+    {
+      "id": "Q10",
+      "section": "10. Open questions",
+      "status": "pending",
+      "question": "Question ten?",
+      "options": [
+        {
+          "value": "ten",
+          "label": "Ten"
+        }
+      ]
+    }
+  ],
+  "currentQuestionId": "Q1",
+  "answeredCount": 2,
+  "validQuestionCount": 8
+}

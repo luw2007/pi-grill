@@ -8,56 +8,69 @@ import {
 	commitAnswerBatch,
 	consumeConvergenceAnswer,
 	createAnswerEventBatcher,
-	deriveSections,
+	deriveSectionIndex,
+	normalizeSection,
 	getLedgerRows,
 	joinRenderedColumns,
 	migrateState,
+	normalizeOptionViewport,
 	normalizeUiState,
+	parseGrillConfig,
+	parseGrillConfigText,
+	resolveGrillConfig,
 	runConvergenceConfirmation,
 	validateAnswerBatchTransition,
+	validateState,
+	canConverge,
 	type GrillState,
-} from "/Users/luwei.will/.pi/agent/extensions/grill.ts";
+} from "../grill.ts";
 
-function v1Fixture() {
-	return JSON.parse(readFileSync(new URL("./fixtures/grill-v1.json", import.meta.url), "utf8"));
-}
-
-describe("v1 → v2 migration", () => {
-	test("adds recoverable UI state without changing interview facts", () => {
-		const source = v1Fixture();
-		const migrated = migrateState(source) as GrillState;
-
-		expect(migrated.schemaVersion).toBe(2);
-		expect(migrated.ui).toEqual({
+function v4Fixture(): GrillState {
+	const source = JSON.parse(readFileSync(new URL("./fixtures/grill-state.json", import.meta.url), "utf8"));
+	delete source.sections;
+	return {
+		...source,
+		schemaVersion: 4,
+		notes: [],
+		ui: {
 			focusedPane: "questions",
 			selectedQuestionId: "Q1",
 			selectedOptionByQuestion: {},
+			optionScrollOffsetByQuestion: {},
 			listScrollOffset: 0,
 			activeSurface: "question",
 			revision: 0,
-		});
-		expect(migrated.questions).toEqual(source.questions);
-		expect(migrated).not.toHaveProperty("sections");
-		expect(migrated.createdAt).toBe(source.createdAt);
+		},
+	};
+}
+
+describe("schema v4 incompatible state", () => {
+	test("accepts valid v4 state without changing interview facts", () => {
+		const source = v4Fixture();
+		expect(migrateState(source)).toEqual(source);
 	});
 
-	test("is idempotent for valid v2 state", () => {
-		const first = migrateState(v1Fixture()) as GrillState;
-		expect(migrateState(first)).toEqual(first);
-	});
-
-	test("rejects unsupported schema versions", () => {
-		expect(() => migrateState({ ...v1Fixture(), schemaVersion: 99 })).toThrow("schemaVersion");
+	test("rejects older schemas, unknown versions, and missing required fields with repair guidance", () => {
+		for (const schemaVersion of [1, 2, 3, 99]) {
+			expect(() => migrateState({ ...v4Fixture(), schemaVersion })).toThrow("delete or repair the state file");
+		}
+		const missing = v4Fixture() as any;
+		delete missing.ui.optionScrollOffsetByQuestion;
+		expect(() => migrateState(missing)).toThrow("$.ui.optionScrollOffsetByQuestion");
+		const noNotes = v4Fixture() as any;
+		delete noNotes.notes;
+		expect(() => migrateState(noNotes)).toThrow("$.notes");
 	});
 });
 
 describe("UI state normalization", () => {
 	test("repairs missing selection and clamps indices and scroll offset", () => {
-		const state = migrateState(v1Fixture()) as GrillState;
+		const state = migrateState(v4Fixture()) as GrillState;
 		state.ui = {
 			focusedPane: "answer",
 			selectedQuestionId: "missing",
 			selectedOptionByQuestion: { Q1: 99, Q2: -2, stale: 3 },
+			optionScrollOffsetByQuestion: { Q1: 99, Q2: -2, stale: 3 },
 			listScrollOffset: 99,
 			activeSurface: "question",
 			revision: 4,
@@ -67,6 +80,7 @@ describe("UI state normalization", () => {
 			focusedPane: "answer",
 			selectedQuestionId: "Q1",
 			selectedOptionByQuestion: { Q1: 2, Q2: 0 },
+			optionScrollOffsetByQuestion: { Q1: 0, Q2: 0 },
 			listScrollOffset: 9,
 			activeSurface: "question",
 			revision: 4,
@@ -74,44 +88,64 @@ describe("UI state normalization", () => {
 	});
 
 	test("preserves submit surface with no selected question", () => {
-		const state = migrateState(v1Fixture()) as GrillState;
+		const state = migrateState(v4Fixture()) as GrillState;
 		state.ui.activeSurface = "submit";
 		state.ui.selectedQuestionId = null;
 		expect(normalizeUiState(state).selectedQuestionId).toBeNull();
 	});
 });
 
+describe("option viewport and config", () => {
+	test("keeps selection visible and clamps offset across shrinking option lists", () => {
+		expect(normalizeOptionViewport(0, 9, 10, 8, true)).toEqual({ selectedIndex: 0, offset: 0 });
+		expect(normalizeOptionViewport(8, 0, 10, 8, true)).toEqual({ selectedIndex: 8, offset: 1 });
+		expect(normalizeOptionViewport(9, 2, 4, 8, false)).toEqual({ selectedIndex: 3, offset: 0 });
+	});
+
+	test("uses default 8 and rejects unsafe thresholds", () => {
+		expect(parseGrillConfig(undefined)).toEqual({ convergeKeywords: ["confirm", "converge", "yes", "确认", "生成"], optionScrollThreshold: 8 });
+		expect(parseGrillConfig({ optionScrollThreshold: 12 }).optionScrollThreshold).toBe(12);
+		expect(() => parseGrillConfigText("{")).toThrow();
+		const notifications: string[] = [];
+		expect(resolveGrillConfig("{", (message) => notifications.push(message)).optionScrollThreshold).toBe(8);
+		expect(notifications).toHaveLength(1);
+		for (const value of [0, -1, 1.5, 101, Number.MAX_SAFE_INTEGER]) {
+			expect(() => parseGrillConfig({ optionScrollThreshold: value })).toThrow("optionScrollThreshold");
+		}
+	});
+});
+
 describe("atomic answer batches", () => {
 	test("does not mutate or partially answer when a later answer is invalid", () => {
-		const source = migrateState(v1Fixture()) as GrillState;
+		const source = migrateState(v4Fixture()) as GrillState;
 		const before = structuredClone(source);
 		expect(() => applyAnswerBatch(source, [
-			{ id: "Q1", value: "A", label: "选项一", index: 1, reason: "first" },
+			{ id: "Q1", value: "A", label: "Option one", index: 1, reason: "first" },
 			{ id: "missing", value: "yes", label: "Yes", index: 1, reason: "second" },
-		])).toThrow("问题不存在：missing");
+		])).toThrow("question not found: missing");
 		expect(source).toEqual(before);
 		expect(source.questions[0]?.status).toBe("current");
 	});
 
 	test("answers the whole batch in one derived state", () => {
-		const source = migrateState(v1Fixture()) as GrillState;
+		const source = migrateState(v4Fixture()) as GrillState;
 		const next = applyAnswerBatch(source, [
-			{ id: "Q1", value: "A", label: "选项一", index: 1, reason: "first" },
+			{ id: "Q1", value: "A", label: "Option one", index: 1, reason: "first" },
 			{ id: "Q2", value: "yes", label: "Yes", index: 1, reason: "" },
 		]);
 		expect(next.questions.slice(0, 2).map((question) => question.status)).toEqual(["answered", "answered"]);
-		const sections = deriveSections(next);
-		expect(sections["① 背景与问题"]).toContain("选项一");
-		expect(sections["② 目标与非目标"]).toContain("Yes");
+		const index = deriveSectionIndex(next);
+		expect(index["1. Background"]).toContainEqual({ id: "Q1", status: "answered" });
+		expect(index["2. Goals"]).toContainEqual({ id: "Q2", status: "answered" });
 		expect(validateAnswerBatchTransition(next, source, ["Q1", "Q2"])).toBeUndefined();
 		expect(source.questions.slice(0, 2).map((question) => question.status)).toEqual(["current", "pending"]);
 	});
 
 	test("commits current + pending answers with exactly one write", () => {
-		const source = migrateState(v1Fixture()) as GrillState;
+		const source = migrateState(v4Fixture()) as GrillState;
 		const writes: GrillState[] = [];
 		const next = commitAnswerBatch(source, [
-			{ id: "Q1", value: "A", label: "选项一", index: 1, reason: "" },
+			{ id: "Q1", value: "A", label: "Option one", index: 1, reason: "" },
 			{ id: "Q2", value: "yes", label: "Yes", index: 1, reason: "" },
 		], { write: (state) => writes.push(structuredClone(state)) });
 		expect(writes).toHaveLength(1);
@@ -119,33 +153,42 @@ describe("atomic answer batches", () => {
 		expect(next.questions.slice(0, 2).map((question) => question.status)).toEqual(["answered", "answered"]);
 	});
 
-	test("overwrites an answered choice in place; derived sections reflect only current answers", () => {
-		const source = migrateState(v1Fixture()) as GrillState;
+	test("overwrites an answered choice in place; section index stays a ledger map", () => {
+		const source = migrateState(v4Fixture()) as GrillState;
 		const answered = source.questions.find((question) => question.id === "Q3")!;
-		answered.section = "① 背景与问题";
+		answered.section = "1. Background";
 		const writes: GrillState[] = [];
 		const next = commitAnswerBatch(source, [
 			{ id: "Q3", value: "new", label: "New", index: 2, reason: "latest" },
 		], { write: (state) => writes.push(structuredClone(state)) });
 		expect(writes).toHaveLength(1);
 		expect(next.questions.find((question) => question.id === "Q3")?.userChoice).toBe("New");
-		const sections = deriveSections(next);
-		expect(sections["① 背景与问题"]).toContain("用户选择：New；理由：latest");
-		expect(sections["① 背景与问题"]).not.toContain("Old");
+		const index = deriveSectionIndex(next);
+		expect(index["1. Background"]).toContainEqual({ id: "Q3", status: "answered" });
+		expect(JSON.stringify(index)).not.toContain("New");
 		expect(validateAnswerBatchTransition(next, source, ["Q3"])).toBeUndefined();
 	});
 
+	test("indexes free-form sections in ledger order and normalizes section text", () => {
+		const source = migrateState(v4Fixture()) as GrillState;
+		source.questions[0].section = "Custom Track";
+		source.questions[1].section = "Custom Track";
+		const index = deriveSectionIndex(source);
+		expect(index["Custom Track"].map((entry) => entry.id)).toEqual(["Q1", "Q2"]);
+		expect(normalizeSection("  custom\tgroup ")).toBe("custom group");
+	});
+
 	test("keeps deprecated and removed questions read-only", () => {
-		const source = migrateState(v1Fixture()) as GrillState;
+		const source = migrateState(v4Fixture()) as GrillState;
 		for (const id of ["Q4", "Q5"]) {
 			expect(() => applyAnswerBatch(source, [
 				{ id, value: "new", label: "New", index: 1, reason: "" },
-			])).toThrow("已无法回答");
+			])).toThrow("can no longer be answered");
 		}
 	});
 
 	test("rejects pending → answered outside the declared batch", () => {
-		const source = migrateState(v1Fixture()) as GrillState;
+		const source = migrateState(v4Fixture()) as GrillState;
 		const next = applyAnswerBatch(source, [
 			{ id: "Q2", value: "yes", label: "Yes", index: 1, reason: "" },
 		]);
@@ -155,7 +198,7 @@ describe("atomic answer batches", () => {
 
 describe("asynchronous panel model", () => {
 	test("uses the complete ledger and marks terminal rows read-only", () => {
-		const state = migrateState(v1Fixture()) as GrillState;
+		const state = migrateState(v4Fixture()) as GrillState;
 		const rows = getLedgerRows(state);
 		expect(rows).toHaveLength(state.questions.length);
 		expect(rows.map((row) => row.id)).toEqual(state.questions.map((question) => question.id));
@@ -166,7 +209,7 @@ describe("asynchronous panel model", () => {
 	});
 
 	test("selects an existing editable answer, then recommendation, then first; custom answers map to virtual other", () => {
-		const state = migrateState(v1Fixture()) as GrillState;
+		const state = migrateState(v4Fixture()) as GrillState;
 		const answered = state.questions.find((item) => item.id === "Q3")!;
 		expect(getInitialOptionIndex(answered)).toBe(0);
 		answered.userChoice = "custom prior answer";
@@ -248,8 +291,8 @@ describe("responsive layout", () => {
 	});
 
 	test("joins ANSI, CJK, emoji and long content without exceeding terminal width", () => {
-		const left = ["问题一", "\u001b[32mQ2\u001b[0m", "👩‍💻 e\u0301"];
-		const right = ["这是右侧内容", "second line", "x".repeat(100), "third"];
+		const left = ["Question one", "\u001b[32mQ2\u001b[0m", "👩‍💻 e\u0301"];
+		const right = ["右侧内容 CJK", "second line", "x".repeat(100), "third"];
 		const lines = joinRenderedColumns(left, right, 12, 20, 3);
 		expect(lines).toHaveLength(4);
 		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(35);
@@ -257,8 +300,40 @@ describe("responsive layout", () => {
 
 	test("stays within tiny width allocations", () => {
 		for (const width of [0, 1, 2, 8]) {
-			const lines = joinRenderedColumns(["中文很长"], ["answer"], width, width, 0);
+			const lines = joinRenderedColumns(["宽字符测试"], ["answer"], width, width, 0);
 			for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width * 2);
 		}
+	});
+});
+
+describe("dependency-driven interview mechanics", () => {
+	test("rejects empty, overlong, and unnormalized sections but accepts free-form labels", () => {
+		const source = migrateState(v4Fixture()) as GrillState;
+		const withSection = (section: string) => {
+			const next = structuredClone(source);
+			next.questions[0].section = section;
+			return next;
+		};
+
+		expect(validateState(withSection("any custom group"))).toBeUndefined();
+		expect(validateState(withSection("  "))).toContain("empty section");
+		expect(validateState(withSection(" padded "))).toContain("normalized");
+		expect(validateState(withSection("x".repeat(121)))).toContain("exceeds");
+	});
+
+	test("converges on open questions alone, regardless of section coverage", () => {
+		const source = migrateState(v4Fixture()) as GrillState;
+		expect(canConverge(source)).toBe(false);
+
+		const closed = structuredClone(source);
+		for (const question of closed.questions) {
+			if (question.status === "pending" || question.status === "current") {
+				question.status = "removed";
+				question.statusNote = "closed for test";
+			}
+			question.section = "single group";
+		}
+		expect(canConverge(closed)).toBe(true);
+		expect(Object.keys(deriveSectionIndex(closed))).toEqual(["single group"]);
 	});
 });

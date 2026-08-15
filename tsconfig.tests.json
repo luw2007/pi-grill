@@ -6,11 +6,11 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node", "bun"],
+    "types": ["node", "bun-types"],
     "allowImportingTsExtensions": true
   },
   "include": [
     "tests/**/*.ts",
-    "/Users/luwei.will/.pi/agent/extensions/grill.ts"
+    "grill.ts"
   ]
 }

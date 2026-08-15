@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import grillModule from "/Users/luwei.will/.pi/agent/extensions/grill.ts";
+import grillModule from "../grill.ts";
 
 const grillExtension = ((grillModule as unknown as { default?: typeof grillModule }).default ?? grillModule) as unknown as (pi: any) => void;
 
@@ -52,7 +52,8 @@ function setup() {
 		theme,
 		setWidget(key: string, value: string[] | undefined) { widgets.set(key, value); },
 		notify(message: string) { notifications.push(message); },
-		confirm: async () => false,
+		confirmResponses: [] as boolean[],
+		confirm: async () => (ui.confirmResponses.length ? ui.confirmResponses.shift()! : false),
 		input: async () => undefined,
 		select: async () => undefined,
 		custom(factory: any, options: any) {
@@ -84,10 +85,10 @@ function setup() {
 	grillExtension(pi);
 	const initialContent = `integration-${cwd}`;
 	const kickoff = commands.get("grill").handler(initialContent, context);
-	return { cwd, initialContent, kickoff, tools, commands, messages, customCalls, handle, widgets, get component() { return component; }, get done() { return done; }, context, notifications, panel };
+	return { cwd, initialContent, kickoff, tools, commands, messages, customCalls, handle, widgets, ui, get component() { return component; }, get done() { return done; }, context, notifications, panel };
 }
 
-function question(id: string, section = "① 背景与问题", requiresText = false) {
+function question(id: string, section = "1. Background", requiresText = false) {
 	return { id, section, question: `${id}?`, options: [{ value: "yes", label: "Yes", ...(requiresText ? { requiresText: true } : {}) }] };
 }
 
@@ -116,14 +117,14 @@ describe("asynchronous grill integration", () => {
 		const env = setup();
 		await env.kickoff;
 		await publish(env, ["Q1"]);
-		expect(env.component.render(120).join("\n")).toContain("Esc 隐藏面板");
-		expect(env.widgets.get("grill")?.[0]).toBe("grill · 已答 0 / 有效 1 · 当前 Q1 · [展开] 按 Esc 隐藏");
+		expect(env.component.render(120).join("\n")).toContain("Esc hide");
+		expect(env.widgets.get("grill")?.[0]).toBe("grill · answered 0 / active 1 · current Q1 · [open] Esc to hide");
 
 		env.component.handleInput("\u001b");
 		expect(env.handle.setHiddenCalls).toEqual([false, true]);
 		expect(env.handle.unfocusCalls).toEqual([undefined]);
 		expect(env.panel.promise).toBeInstanceOf(Promise);
-		expect(env.widgets.get("grill")?.[0]).toBe("grill · 已答 0 / 有效 1 · 当前 Q1 · [隐藏] /grill-panel 展开");
+		expect(env.widgets.get("grill")?.[0]).toBe("grill · answered 0 / active 1 · current Q1 · [hidden] /grill-panel to open");
 
 		const statePath = [...env.widgets.values()][0]?.[1] as string;
 		const background = JSON.parse(readFileSync(statePath, "utf8"));
@@ -131,48 +132,108 @@ describe("asynchronous grill integration", () => {
 		background.validQuestionCount = 2;
 		await Bun.write(statePath, `${JSON.stringify(background, null, 2)}\n`);
 		await new Promise((resolve) => setTimeout(resolve, 30));
-		expect(env.widgets.get("grill")?.[0]).toBe("grill · 已答 0 / 有效 2 · 当前 Q1 · [隐藏] /grill-panel 展开");
+		expect(env.widgets.get("grill")?.[0]).toBe("grill · answered 0 / active 2 · current Q1 · [hidden] /grill-panel to open");
 
 		await env.commands.get("grill-panel").handler("", env.context);
 		expect(env.customCalls).toHaveLength(1);
 		expect(env.handle.setHiddenCalls).toEqual([false, true, false]);
 		expect(env.handle.focusCalls).toBe(2);
-		expect(env.widgets.get("grill")?.[0]).toBe("grill · 已答 0 / 有效 2 · 当前 Q1 · [展开] 按 Esc 隐藏");
+		expect(env.widgets.get("grill")?.[0]).toBe("grill · answered 0 / active 2 · current Q1 · [open] Esc to hide");
 
 		env.component.handleInput("\u001b");
 		await publish(env, ["Q2"]);
 		expect(env.customCalls).toHaveLength(1);
 		expect(env.handle.setHiddenCalls).toEqual([false, true, false, true, false]);
 		expect(env.handle.focusCalls).toBe(3);
-		expect(env.widgets.get("grill")?.[0]).toBe("grill · 已答 0 / 有效 3 · 当前 Q2 · [展开] 按 Esc 隐藏");
+		expect(env.widgets.get("grill")?.[0]).toBe("grill · answered 0 / active 3 · current Q2 · [open] Esc to hide");
 		expect(env.component.render(120).join("\n")).toContain("Q2");
+	});
+
+	test("renders context between question and options, pins it, and omits it from HTML", async () => {
+		const env = setup();
+		await env.kickoff;
+		const context = "Why this matters and what the answer decides";
+		const published = await publishQuestions(env, [{ ...question("Q1"), context }]);
+		const statePath = published.details.statePath as string;
+		const rendered = env.component.render(120).join("\n");
+		expect(rendered.indexOf("Q1?")).toBeLessThan(rendered.indexOf(context));
+		expect(rendered.indexOf(context)).toBeLessThan(rendered.indexOf("1. Yes"));
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\r");
+		const disk = JSON.parse(readFileSync(statePath, "utf8"));
+		expect(disk.questions[0].pinned.context).toBe(context);
+		const html = readFileSync(statePath.replace(/\.json$/, ".html"), "utf8");
+		expect(html).not.toContain(context);
+	});
+
+	test("scrolls long option lists by atomic blocks and persists the per-question viewport", async () => {
+		const env = setup();
+		await env.kickoff;
+		const options = Array.from({ length: 9 }, (_, index) => ({
+			value: `v${index + 1}`,
+			label: `Option ${index + 1}`,
+			description: `Description ${index + 1}`,
+			recommendationReason: `Reason ${index + 1}`,
+			...(index === 8 ? { requiresText: true } : {}),
+		}));
+		const published = await publishQuestions(env, [{ id: "Q1", section: "1. Background", question: "Long?", options }]);
+		const statePath = published.details.statePath as string;
+		env.component.handleInput("\u001b[C");
+		let rendered = env.component.render(120).join("\n");
+		expect(rendered).toContain("showing 1–8 of 10 · ↑↓ scroll");
+		expect(rendered).not.toContain("Option 9");
+		for (let index = 0; index < 8; index += 1) env.component.handleInput("\u001b[B");
+		rendered = env.component.render(120).join("\n");
+		expect(rendered).toContain("Option 9 · needs detail");
+		expect(rendered).toContain("Description 9");
+		expect(rendered).toContain("Reason 9");
+		expect(rendered).toContain("showing 2–9 of 10 · ↑↓ scroll");
+		env.component.handleInput("\u001b");
+		const disk = JSON.parse(readFileSync(statePath, "utf8"));
+		expect(disk.ui.selectedOptionByQuestion.Q1).toBe(8);
+		expect(disk.ui.optionScrollOffsetByQuestion.Q1).toBe(1);
+		await env.commands.get("grill-panel").handler("", env.context);
+		expect(env.component.render(120).join("\n")).toContain("showing 2–9 of 10 · ↑↓ scroll");
+	});
+
+	test("does not scroll at the configured threshold", async () => {
+		const env = setup();
+		await env.kickoff;
+		await publishQuestions(env, [{
+			id: "Q1", section: "1. Background", question: "Boundary?",
+			options: Array.from({ length: 8 }, (_, index) => ({ value: `v${index}`, label: `Option ${index}` })),
+		}]);
+		env.component.handleInput("\u001b[C");
+		const rendered = env.component.render(120).join("\n");
+		expect(rendered).toContain("Something else (type it)");
+		expect(rendered).not.toContain("showing ");
 	});
 
 	test("requiresText needs non-empty supplement, Esc returns to select, then second Esc hides", async () => {
 		const env = setup();
 		await env.kickoff;
-		const published = await publishQuestions(env, [question("Q1", "① 背景与问题", true)]);
+		const published = await publishQuestions(env, [question("Q1", "1. Background", true)]);
 		const statePath = published.details.statePath as string;
 		env.component.handleInput("\u001b[C");
 		env.component.handleInput("\r");
-		expect(env.component.render(120).join("\n")).toContain("补充说明（必填）");
+		expect(env.component.render(120).join("\n")).toContain("Add detail (required)");
 		env.component.handleInput("\r");
 		expect(JSON.parse(readFileSync(statePath, "utf8")).questions[0].status).toBe("current");
-		expect(env.component.render(120).join("\n")).toContain("补充说明（必填）");
+		expect(env.component.render(120).join("\n")).toContain("Add detail (required)");
 		env.component.handleInput("\u001b");
-		expect(env.component.render(120).join("\n")).not.toContain("补充说明（必填）");
+		expect(env.component.render(120).join("\n")).not.toContain("Add detail (required)");
 		expect(env.handle.setHiddenCalls).toEqual([false]);
-		expect(env.widgets.get("grill")?.[0]).toContain("[展开] 按 Esc 隐藏");
+		expect(env.widgets.get("grill")?.[0]).toContain("[open] Esc to hide");
 		env.component.handleInput("\u001b");
 		expect(env.handle.setHiddenCalls).toEqual([false, true]);
 		expect(env.handle.unfocusCalls.at(-1)).toBeUndefined();
-		expect(env.widgets.get("grill")?.[0]).toContain("[隐藏] /grill-panel 展开");
+		expect(env.widgets.get("grill")?.[0]).toContain("[hidden] /grill-panel to open");
 	});
 
 	test("requiresText commits its supplement as reason", async () => {
 		const env = setup();
 		await env.kickoff;
-		const published = await publishQuestions(env, [question("Q1", "① 背景与问题", true)]);
+		const published = await publishQuestions(env, [question("Q1", "1. Background", true)]);
 		const statePath = published.details.statePath as string;
 		env.component.handleInput("\u001b[C");
 		env.component.handleInput("\r");
@@ -192,7 +253,7 @@ describe("asynchronous grill integration", () => {
 		env.component.handleInput("\u001b[C");
 		env.component.handleInput("\u001b[B");
 		env.component.handleInput("\r");
-		expect(env.component.render(120).join("\n")).toContain("输入自定义选项（必填）");
+		expect(env.component.render(120).join("\n")).toContain("Type your own answer (required)");
 		env.component.handleInput("\r");
 		expect(JSON.parse(readFileSync(statePath, "utf8")).questions[0].status).toBe("current");
 		for (const char of "Custom answer") env.component.handleInput(char);
@@ -201,7 +262,7 @@ describe("asynchronous grill integration", () => {
 		expect(answered.status).toBe("answered");
 		expect(answered.userChoice).toBe("Custom answer");
 		expect(answered.reason).toBe("");
-		expect(env.component.render(120).join("\n")).not.toContain("理由");
+		expect(env.component.render(120).join("\n")).not.toContain("Reason");
 	});
 
 	test("Ctrl+1..Ctrl+0 directly select ledger Q1..Q10 in the answer pane", async () => {
@@ -211,7 +272,7 @@ describe("asynchronous grill integration", () => {
 		for (const [key, id] of [["1", "Q1"], ["9", "Q9"], ["0", "Q10"]] as const) {
 			env.component.handleInput(`\u001b[${key.charCodeAt(0)};5u`);
 			const rendered = env.component.render(160).join("\n");
-			expect(rendered).toContain("答题区 ◀");
+			expect(rendered).toContain("Answer ◀");
 			expect(rendered).toContain(`${id}?`);
 		}
 	});
@@ -224,7 +285,7 @@ describe("asynchronous grill integration", () => {
 		env.component.handleInput("\u001b[B");
 		env.component.handleInput("\u001b[D");
 		expect(env.component.render(120).join("\n")).toContain("Q1?");
-		expect(env.component.render(120).join("\n")).toContain("答题区 ◀");
+		expect(env.component.render(120).join("\n")).toContain("Answer ◀");
 		env.component.handleInput("\u001b[C");
 		expect(JSON.parse(readFileSync(statePath, "utf8")).questions[0].status).toBe("answered");
 	});
@@ -238,32 +299,32 @@ describe("asynchronous grill integration", () => {
 		env.component.handleInput("\r");
 		env.component.handleInput("\r");
 		const rendered = env.component.render(120).join("\n");
-		expect(rendered).toContain("全部题目已回答");
-		expect(rendered).toContain("只读完成摘要");
+		expect(rendered).toContain("All questions handled");
+		expect(rendered).toContain("Read-only summary");
 		expect(rendered).not.toContain(">  1. Yes");
 		const disk = JSON.parse(readFileSync(statePath, "utf8"));
 		expect(disk.ui.selectedQuestionId).toBeNull();
 		expect(disk.ui.activeSurface).toBe("submit");
-		expect(env.widgets.get("grill")?.[0]).toContain("当前 已收敛");
+		expect(env.widgets.get("grill")?.[0]).toContain("current converged");
 	});
 
 	test("explicit navigation after completion can reopen and overwrite answered Q1", async () => {
 		const env = setup();
 		await env.kickoff;
 		const published = await publishQuestions(env, [{
-			id: "Q1", section: "① 背景与问题", question: "Q1?",
+			id: "Q1", section: "1. Background", question: "Q1?",
 			options: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }],
 		}]);
 		const statePath = published.details.statePath as string;
 		env.component.handleInput("\u001b[C");
 		env.component.handleInput("\r");
-		expect(env.component.render(120).join("\n")).toContain("全部题目已回答");
+		expect(env.component.render(120).join("\n")).toContain("All questions handled");
 		env.component.handleInput("\u001b[49;5u");
-		expect(env.component.render(120).join("\n")).toContain("答题区 ◀");
+		expect(env.component.render(120).join("\n")).toContain("Answer ◀");
 		env.component.handleInput("\u001b[B");
 		env.component.handleInput("\r");
 		expect(JSON.parse(readFileSync(statePath, "utf8")).questions[0].userChoice).toBe("Beta");
-		expect(env.component.render(120).join("\n")).toContain("全部题目已回答");
+		expect(env.component.render(120).join("\n")).toContain("All questions handled");
 	});
 
 	test("external pending question exits completion without reopening or focusing a hidden panel", async () => {
@@ -282,9 +343,9 @@ describe("asynchronous grill integration", () => {
 		await Bun.write(statePath, `${JSON.stringify(background, null, 2)}\n`);
 		await new Promise((resolve) => setTimeout(resolve, 100));
 		expect(env.handle.focusCalls).toBe(focusCalls);
-		expect(env.widgets.get("grill")?.[0]).toContain("[隐藏]");
+		expect(env.widgets.get("grill")?.[0]).toContain("[hidden]");
 		expect(env.component.render(120).join("\n")).toContain("Q-new?");
-		expect(env.component.render(120).join("\n")).not.toContain("全部题目已回答");
+		expect(env.component.render(120).join("\n")).not.toContain("All questions handled");
 		await env.commands.get("grill-panel").handler("", env.context);
 		expect(env.handle.focusCalls).toBe(focusCalls + 1);
 	});
@@ -299,7 +360,7 @@ describe("asynchronous grill integration", () => {
 			const env = setup();
 			await env.kickoff;
 			const published = await publishQuestions(env, [{
-				id: "Q1", section: "① 背景与问题", question: "Q1?",
+				id: "Q1", section: "1. Background", question: "Q1?",
 				options: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }], recommended: "b",
 			}]);
 			const statePath = published.details.statePath as string;
@@ -325,10 +386,93 @@ describe("asynchronous grill integration", () => {
 		}
 	});
 
+	test("converged plan confirmation ends the runtime, clears the widget, and keeps state files", async () => {
+		const env = setup();
+		await env.kickoff;
+		const published = await env.tools.get("grill_ask").execute("call", {
+			questions: [{ id: "Q1", section: "1. Background", question: "confirm?", options: [{ value: "confirm", label: "确认生成 plan" }] }],
+			converge: true,
+		}, undefined, undefined, env.context);
+		const statePath = published.details.statePath as string;
+		const htmlPath = statePath.replace(/\.json$/, ".html");
+		expect(env.widgets.get("grill")).toBeDefined();
+
+		env.ui.confirmResponses.push(true);
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\r");
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(existsSync(statePath)).toBe(true);
+		expect(existsSync(htmlPath)).toBe(true);
+		expect(env.widgets.get("grill")).toBeUndefined();
+		expect(env.handle.hideCalls).toBe(1);
+		expect(env.notifications.some((message) => message.includes("the panel is closed"))).toBe(true);
+
+		await env.commands.get("grill-panel").handler("", env.context);
+		expect(env.notifications.at(-1)).toContain("No active /grill session");
+	});
+
+	test("Ctrl+S skips a question end-to-end: writes skipped, emits event, unblocks convergence, and stays re-answerable", async () => {
+		const env = setup();
+		await env.kickoff;
+		const published = await publish(env, ["Q1", "Q2"]);
+		const statePath = published.details.statePath as string;
+
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\u0013");
+
+		const afterSkip = JSON.parse(readFileSync(statePath, "utf8"));
+		const skipped = afterSkip.questions.find((item: any) => item.id === "Q1");
+		expect(skipped.status).toBe("skipped");
+		expect(skipped.statusNote).toBeTruthy();
+		expect(skipped.userChoice).toBeUndefined();
+		expect(afterSkip.answeredCount).toBe(0);
+		expect(afterSkip.questions.find((item: any) => item.id === "Q2").status).toBe("pending");
+
+		expect(env.component.render(120).join("\n")).toContain("Q2?");
+
+		env.component.handleInput("\u0013");
+		const allSkipped = JSON.parse(readFileSync(statePath, "utf8"));
+		expect(allSkipped.questions.map((item: any) => item.status)).toEqual(["skipped", "skipped"]);
+		expect(env.component.render(120).join("\n")).toContain("All questions handled");
+
+		env.component.handleInput(`\u001b[${"1".charCodeAt(0)};5u`);
+		env.component.handleInput("\r");
+		const reanswered = JSON.parse(readFileSync(statePath, "utf8"));
+		expect(reanswered.questions.find((item: any) => item.id === "Q1").status).toBe("answered");
+		expect(reanswered.questions.find((item: any) => item.id === "Q1").statusNote).toBeUndefined();
+	});
+
+	test("Ctrl+N records a note end-to-end without touching the ledger and steers it to the agent", async () => {
+		const env = setup();
+		await env.kickoff;
+		const published = await publish(env, ["Q1"]);
+		const statePath = published.details.statePath as string;
+		const before = JSON.parse(readFileSync(statePath, "utf8"));
+
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\u000e");
+		expect(env.component.render(120).join("\n")).toContain("Note for the agent");
+
+		for (const char of "the premise is wrong") env.component.handleInput(char);
+		env.component.handleInput("\r");
+
+		const after = JSON.parse(readFileSync(statePath, "utf8"));
+		expect(after.notes).toEqual(["the premise is wrong"]);
+		expect(after.questions).toEqual(before.questions);
+		expect(after.answeredCount).toBe(before.answeredCount);
+
+		const noteMessage = env.messages.find((entry) => entry.message.customType === "grill-note");
+		expect(noteMessage).toBeDefined();
+		expect(noteMessage.message.content).toContain("the premise is wrong");
+		expect(noteMessage.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
+		expect(env.component.render(120).join("\n")).toContain("Q1?");
+	});
+
 	test("emergency keys restore editor focus and never commit drafts", async () => {
 		const env = setup();
 		await env.kickoff;
-		const published = await publishQuestions(env, [question("Q1", "① 背景与问题", true)]);
+		const published = await publishQuestions(env, [question("Q1", "1. Background", true)]);
 		const statePath = published.details.statePath as string;
 		const before = JSON.parse(readFileSync(statePath, "utf8"));
 		env.component.handleInput("\u0003");
