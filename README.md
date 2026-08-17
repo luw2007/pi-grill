@@ -7,7 +7,7 @@ The agent interviews you about a plan or design one decision at a time, then wri
 ## Install
 
 ```bash
-pi install git:github.com/luw2007/pi-grill@v0.1.0
+pi install git:github.com/luw2007/pi-grill@v0.2.0
 ```
 
 Then restart pi or run `/reload`. To try it without installing: `pi -e git:github.com/luw2007/pi-grill`.
