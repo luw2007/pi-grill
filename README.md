@@ -115,6 +115,13 @@ bun test
 bunx tsc -p tsconfig.tests.json
 ```
 
+## Acknowledgements
+
+- [mattpocock/skills — `grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling) inspired the design-interview approach: resolve a plan through focused, sequential questions.
+- [edlsh/pi-ask-user](https://github.com/edlsh/pi-ask-user) informed the Pi-native structured-question interaction model, including multiple-choice and free-text answers.
+
+pi-grill is an independent implementation; it does not include code from either project.
+
 ## License
 
 MIT
