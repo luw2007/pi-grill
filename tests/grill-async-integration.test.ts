@@ -25,6 +25,7 @@ function setup() {
 	const commands = new Map<string, any>();
 	const eventHandlers = new Map<string, Array<(...args: any[]) => any>>();
 	const messages: any[] = [];
+	const userMessages: Array<{ message: string; options: any }> = [];
 	const customCalls: any[] = [];
 	const notifications: string[] = [];
 	const widgets = new Map<string, string[] | undefined>();
@@ -80,12 +81,12 @@ function setup() {
 		registerCommand(name: string, command: any) { commands.set(name, command); },
 		on(name: string, handler: any) { const list = eventHandlers.get(name) ?? []; list.push(handler); eventHandlers.set(name, list); },
 		sendMessage(message: any, options: any) { messages.push({ message, options }); },
-		sendUserMessage() {},
+		sendUserMessage(message: string, options: any) { userMessages.push({ message, options }); },
 	};
 	grillExtension(pi);
 	const initialContent = `integration-${cwd}`;
 	const kickoff = commands.get("grill").handler(initialContent, context);
-	return { cwd, initialContent, kickoff, tools, commands, messages, customCalls, handle, widgets, ui, get component() { return component; }, get done() { return done; }, context, notifications, panel };
+	return { cwd, initialContent, kickoff, tools, commands, messages, userMessages, customCalls, handle, widgets, ui, get component() { return component; }, get done() { return done; }, context, notifications, panel };
 }
 
 function question(id: string, section = "1. Background", requiresText = false) {
@@ -101,6 +102,19 @@ async function publishQuestions(env: ReturnType<typeof setup>, questions: any[])
 }
 
 describe("asynchronous grill integration", () => {
+	test("startup prompt makes sections an index and final plan headings content-driven", async () => {
+		const env = setup();
+		await env.kickoff;
+		expect(env.userMessages).toHaveLength(1);
+		const prompt = env.userMessages[0]!.message;
+		expect(prompt).toContain("free-form grouping label used only to index questions");
+		expect(prompt).toContain("Generate the final plan's body headings freely from substantive content");
+		expect(prompt).toContain("no fixed heading pool, required order, minimum section count, or N/A placeholders");
+		expect(prompt).toContain('The final "## Interview transcript" section is always required');
+		expect(prompt).not.toContain("canonical ten-section template");
+		expect(prompt).not.toContain("canonical sections");
+	});
+
 	test("tool publishes and returns while overlay promise is pending", async () => {
 		const env = setup();
 		await env.kickoff;
@@ -131,7 +145,9 @@ describe("asynchronous grill integration", () => {
 		background.questions.push({ ...question("Q-background"), status: "pending" });
 		background.validQuestionCount = 2;
 		await Bun.write(statePath, `${JSON.stringify(background, null, 2)}\n`);
-		await new Promise((resolve) => setTimeout(resolve, 30));
+		for (let attempt = 0; attempt < 20 && !env.widgets.get("grill")?.[0].includes("active 2"); attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
 		expect(env.widgets.get("grill")?.[0]).toBe("grill · answered 0 / active 2 · current Q1 · [hidden] /grill-panel to open");
 
 		await env.commands.get("grill-panel").handler("", env.context);
@@ -407,6 +423,17 @@ describe("asynchronous grill integration", () => {
 		expect(env.widgets.get("grill")).toBeUndefined();
 		expect(env.handle.hideCalls).toBe(1);
 		expect(env.notifications.some((message) => message.includes("the panel is closed"))).toBe(true);
+		expect(env.userMessages).toHaveLength(2);
+		const planPrompt = env.userMessages[1]!.message;
+		expect(planPrompt).toContain("Choose the body's level-2 headings and their order freely");
+		expect(planPrompt).toContain("Do not use a fixed heading pool, require a minimum section count, add empty sections, or write N/A placeholders");
+		expect(planPrompt).toContain('always append a final "## Interview transcript" heading');
+		expect(planPrompt).toContain("including answered, skipped, deprecated and removed");
+		expect(planPrompt).toContain("After writing, read the file back");
+		expect(planPrompt).toContain("confirm every question id is present");
+		expect(planPrompt).not.toContain("canonical plan-heading pool");
+		expect(planPrompt).not.toContain("canonical order");
+		expect(planPrompt).not.toContain("SECTION_TEMPLATE");
 
 		await env.commands.get("grill-panel").handler("", env.context);
 		expect(env.notifications.at(-1)).toContain("No active /grill session");

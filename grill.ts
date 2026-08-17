@@ -207,18 +207,6 @@ const GrillStateSchema = Type.Object({
 });
 
 const DEFAULT_CONVERGE_KEYWORDS = ["confirm", "converge", "yes", "确认", "生成"];
-const SECTION_TEMPLATE = [
-	"1. Background and problem",
-	"2. Goals and non-goals",
-	"3. Current-state findings",
-	"4. Design",
-	"5. Alternatives and trade-offs",
-	"6. Interface and data-structure changes",
-	"7. Risks and blast radius",
-	"8. Test and verification plan",
-	"9. Rollback and cleanup",
-	"10. Open questions and follow-ups",
-] as const;
 
 type GrillConfig = { convergeKeywords: string[]; optionScrollThreshold: number };
 const GrillConfigSchema = Type.Object({
@@ -1447,10 +1435,11 @@ Hard constraints:
 - Always use grill_ask to ask the user; never substitute plain text for the interactive panel. Publish every decision whose dependencies are already resolved in one batch instead of waiting question by question.
 - Ask dependency-first: look up facts yourself (codebase, files, tools) and only put real decisions to the user. Every question must carry a recommended option and the reasoning behind it. Ask downstream questions only after their upstream decision is settled.
 - \`section\` is a free-form grouping label used only to index questions. Never ask a question just to fill a section or reach a question count, and never split one decision across several questions.
+- Generate the final plan's body headings freely from substantive content. There is no fixed heading pool, required order, minimum section count, or N/A placeholders.
 - If the environment offers reusable multi-agent or subagent capabilities, use them to check facts; otherwise verify synchronously before moving on.
 - In the panel the user can press Ctrl+S to skip a question (status becomes \`skipped\`; it does not block convergence and stays re-answerable) and Ctrl+N to send a note that is not tied to any question. When you receive a skip or a note, decide whether to ask a better question or change direction instead of repeating the same one.
 - Convergence is dependency-driven: once there are no pending/current questions and no unresolved dependencies, use grill_ask with converge=true to ask the final "write the plan?" question. Only write the plan with write/edit after the user confirms.
-- The ten-section template is scaffolding for the final plan, not a gate for the interview. Sections with nothing to say are written as "N/A" in the plan.
+- The final "## Interview transcript" section is always required and must be the final level-2 heading.
 - Do not implement literal HTML or a browser bridge. The pi surface is a custom CLI/TUI; the HTML file is only a JSON-driven mirror.
 
 ${stateSummary(runtime.state)}`;
@@ -1467,8 +1456,8 @@ function planPrompt(runtime: Runtime): string {
 JSON state source: ${runtime.paths.json}
 Target directory: ${planDirectory(runtime.cwd)} (first existing of docs/plans/ then plans/; create docs/plans/ if neither exists; do not write anywhere else)
 File name: <project>-<YYYYMMDD>-<short-topic>.md
-The ten-section template is output scaffolding: include the ten level-2 headings ${SECTION_TEMPLATE.map((section) => `"## ${section}"`).join(", ")} verbatim, followed by a final "## Interview transcript" heading. Write "N/A" for sections this round did not cover; never ask extra questions or invent content just to fill a section.
-The transcript must preserve every question in the JSON \`questions\` array, including answered, skipped, deprecated and removed, recording at least id, status, question, options, recommendation, the user's choice, the reason and the status note. If \`notes\` is non-empty, list every user note at the end of the transcript. Do not omit, rewrite or fabricate anything. After writing, read the file back and confirm all headings and question ids are present.`;
+Choose the body's level-2 headings and their order freely from substantive content in the interview and verified repository facts. Do not use a fixed heading pool, require a minimum section count, add empty sections, or write N/A placeholders. Regardless of which body headings are chosen, always append a final "## Interview transcript" heading.
+The transcript must preserve every question in the JSON \`questions\` array, including answered, skipped, deprecated and removed, recording at least id, status, question, options, recommendation, the user's choice, the reason and the status note. If \`notes\` is non-empty, list every user note at the end of the transcript. Do not omit, rewrite or fabricate anything. After writing, read the file back and confirm every question id is present, and confirm "## Interview transcript" is the final level-2 heading.`;
 }
 
 export function canConverge(state: GrillState): boolean {

@@ -49,7 +49,7 @@ Ordinary options commit on `Enter`. Options marked `requiresText`, and the built
 
 ### Ending a session
 
-Once no pending questions remain, the agent asks a final confirmation. Confirming writes the plan into the first existing directory among `docs/plans/` and `plans/`, then closes the panel and clears the status widget. **The JSON state file is kept** — rerun `/grill` with the same description to resume, or delete it yourself.
+Convergence is dependency-driven: once no `pending` or `current` questions and no unresolved decision dependencies remain, the agent asks a final confirmation. Section coverage is never a convergence requirement. Confirming writes the plan into the first existing directory among `docs/plans/` and `plans/`, then closes the panel and clears the status widget. The plan derives its body headings and their order freely from substantive content—there is no fixed heading pool, required order, minimum section count, empty sections, or `N/A` placeholders—and always ends with a complete `## Interview transcript`. **The JSON state file is kept** — rerun `/grill` with the same description to resume, or delete it yourself.
 
 ## Tool contract
 
@@ -75,11 +75,11 @@ Once no pending questions remain, the agent asks a final confirmation. Confirmin
 }
 ```
 
-Answers arrive back asynchronously as a `grill-answers` custom message (batched within 500 ms), and notes as `grill-note`.
+Answers arrive back asynchronously as a `grill-answers` custom message (batched within 500 ms), and notes as `grill-note`. The `section` value only groups and indexes ledger questions; it does not constrain or decide which headings appear in the plan.
 
 ## State
 
-Each session has a single JSON state source under `<tmpdir>/grill/<project>/<hash>.json`, plus an HTML mirror rendered from it. The JSON is authoritative: the panel, the status widget, and the plan all derive from it.
+Each session has a single JSON state source under `<tmpdir>/grill/<project>/<hash>.json`, plus an HTML mirror rendered from it. The JSON is authoritative: the panel, the status widget, and the plan all derive from it. The section index is a derived `section → [{ id, status }]` projection of `questions`; it is not persisted as a second source of truth.
 
 The state is `schemaVersion 4`. Upgrades are **not** backward compatible: a state file from an older schema, or one with missing or conflicting required fields, is treated as corrupt. pi-grill refuses to load it, leaves the file untouched, and asks you to delete or repair it.
 

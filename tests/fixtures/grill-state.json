@@ -1,21 +1,9 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 4,
   "content": "isolated migration fixture",
   "cwd": "/tmp/grill-fixture",
   "createdAt": "2026-08-12T00:00:00.000Z",
   "updatedAt": "2026-08-12T00:00:01.000Z",
-  "sections": {
-    "1. Background": "conclusion one",
-    "2. Goals": "conclusion two",
-    "3. Findings": "",
-    "4. Design": "",
-    "5. Alternatives": "",
-    "6. Interfaces": "",
-    "7. Risks": "",
-    "8. Testing": "",
-    "9. Rollback": "",
-    "10. Open questions": ""
-  },
   "questions": [
     {
       "id": "Q1",
@@ -168,7 +156,17 @@
       ]
     }
   ],
+  "notes": [],
   "currentQuestionId": "Q1",
   "answeredCount": 2,
-  "validQuestionCount": 8
+  "validQuestionCount": 8,
+  "ui": {
+    "focusedPane": "questions",
+    "selectedQuestionId": "Q1",
+    "selectedOptionByQuestion": {},
+    "optionScrollOffsetByQuestion": {},
+    "listScrollOffset": 0,
+    "activeSurface": "question",
+    "revision": 0
+  }
 }

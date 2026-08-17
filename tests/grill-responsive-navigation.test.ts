@@ -26,22 +26,7 @@ import {
 } from "../grill.ts";
 
 function v4Fixture(): GrillState {
-	const source = JSON.parse(readFileSync(new URL("./fixtures/grill-state.json", import.meta.url), "utf8"));
-	delete source.sections;
-	return {
-		...source,
-		schemaVersion: 4,
-		notes: [],
-		ui: {
-			focusedPane: "questions",
-			selectedQuestionId: "Q1",
-			selectedOptionByQuestion: {},
-			optionScrollOffsetByQuestion: {},
-			listScrollOffset: 0,
-			activeSurface: "question",
-			revision: 0,
-		},
-	};
+	return JSON.parse(readFileSync(new URL("./fixtures/grill-state.json", import.meta.url), "utf8")) as GrillState;
 }
 
 describe("schema v4 incompatible state", () => {
