@@ -96,6 +96,16 @@ Optional, at `~/.pi/agent/grill.config.json`:
 
 `optionScrollThreshold` is how many option blocks are shown before the answer pane starts scrolling (1–100, default 8). An invalid config is reported and safe defaults are used.
 
+## Alternate entrypoint
+
+`grill-omp.ts` re-exports the same extension for hosts that load a differently named entrypoint:
+
+```ts
+export { default } from "./grill.ts";
+```
+
+The implementation stays single-sourced in `grill.ts`; the re-export exists only so such a host can point at `grill-omp.ts` without a second copy of the code. If you install with `pi install`, ignore it and use `grill.ts`.
+
 ## Notes for developers
 
 Runs entirely in the pi TUI via `@earendil-works/pi-tui`. No network access and no npm runtime dependencies — `@earendil-works/pi-tui` and `typebox` are provided by pi as peer dependencies.
