@@ -11,6 +11,7 @@
   },
   "include": [
     "tests/**/*.ts",
-    "grill.ts"
+    "grill.ts",
+    "grill-omp.ts"
   ]
 }

@@ -1,7 +1,8 @@
-node_modules/
-.superpowers/
-.pi/
-docs/
-*.log
 .DS_Store
+.pi/
+.superpowers/
+*.log
+bun.lock
 bun.lockb
+docs/
+node_modules/
