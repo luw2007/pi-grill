@@ -127,6 +127,16 @@ describe("asynchronous grill integration", () => {
 		expect(result.details.state.questions.map((item: any) => item.id)).toEqual(["Q1"]);
 	});
 
+	test("opens when the OMP overlay handle has no focus method", async () => {
+		const env = setup();
+		delete (env.handle as { focus?: unknown }).focus;
+		await env.kickoff;
+		await publish(env);
+		expect(env.customCalls).toHaveLength(1);
+		expect(env.handle.setHiddenCalls).toEqual([false]);
+		expect(env.notifications).not.toContainEqual(expect.stringContaining("grill panel closed unexpectedly"));
+	});
+
 	test("keeps widget visibility state correct across hide, refresh, command, and publish", async () => {
 		const env = setup();
 		await env.kickoff;

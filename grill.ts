@@ -1378,7 +1378,7 @@ function openOrFocusPanel(runtime: Runtime, context: ExtensionContext, pi: Exten
 	if (runtime.panel) {
 		runtime.panel.handle?.setHidden(false);
 		runtime.panel.refresh?.(runtime.state);
-		runtime.panel.handle?.focus();
+		runtime.panel.handle?.focus?.();
 		runtime.panel.hidden = false;
 		setWidget(runtime);
 		return;
@@ -1406,7 +1406,7 @@ function openOrFocusPanel(runtime: Runtime, context: ExtensionContext, pi: Exten
 			}
 			controller.handle = handle;
 			handle.setHidden(false);
-			handle.focus();
+			handle.focus?.();
 			controller.hidden = false;
 			setWidget(runtime);
 		},
