@@ -29,10 +29,13 @@ The agent then calls the `grill_ask` tool with one or more questions. They appea
 | `Ctrl+1` … `Ctrl+9`, `Ctrl+0` | Jump straight to ledger question 1–10 |
 | `Ctrl+S` | Skip the current question |
 | `Ctrl+N` | Add a note for the agent, not tied to any question |
-| `Esc` | Hide the panel; state is kept, reopen with `/grill-panel` |
+| `Ctrl+G` | Toggle the active Grill panel |
+| `Esc` | Hide the panel; it reopens automatically for a new question |
 | `Ctrl+C` / `Ctrl+D` | Return focus to the editor, then abort / shut down |
 
 Ordinary options commit on `Enter`. Options marked `requiresText`, and the built-in *Something else (type it)*, open a mandatory text field first.
+
+After a successful answer or skip, the panel hides while the agent continues investigating. Publishing a new question reopens it.
 
 ### Commands
 

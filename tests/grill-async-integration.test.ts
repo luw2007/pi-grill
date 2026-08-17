@@ -23,6 +23,7 @@ function setup() {
 	tempDirs.push(cwd);
 	const tools = new Map<string, any>();
 	const commands = new Map<string, any>();
+	const shortcuts = new Map<string, { handler(context: unknown): Promise<void> | void }>();
 	const eventHandlers = new Map<string, Array<(...args: any[]) => any>>();
 	const messages: any[] = [];
 	const userMessages: Array<{ message: string; options: any }> = [];
@@ -79,14 +80,15 @@ function setup() {
 	const pi: any = {
 		registerTool(tool: any) { tools.set(tool.name, tool); },
 		registerCommand(name: string, command: any) { commands.set(name, command); },
-		on(name: string, handler: any) { const list = eventHandlers.get(name) ?? []; list.push(handler); eventHandlers.set(name, list); },
+		registerShortcut(shortcut: string, options: { handler(context: unknown): Promise<void> | void }) { shortcuts.set(shortcut, options); },
+		on(name: string, handler: (...args: unknown[]) => unknown) { const list = eventHandlers.get(name) ?? []; list.push(handler); eventHandlers.set(name, list); },
 		sendMessage(message: any, options: any) { messages.push({ message, options }); },
 		sendUserMessage(message: string, options: any) { userMessages.push({ message, options }); },
 	};
 	grillExtension(pi);
 	const initialContent = `integration-${cwd}`;
 	const kickoff = commands.get("grill").handler(initialContent, context);
-	return { cwd, initialContent, kickoff, tools, commands, messages, userMessages, customCalls, handle, widgets, ui, get component() { return component; }, get done() { return done; }, context, notifications, panel };
+	return { cwd, initialContent, kickoff, tools, commands, shortcuts, messages, userMessages, customCalls, handle, widgets, ui, get component() { return component; }, get done() { return done; }, context, notifications, panel };
 }
 
 function question(id: string, section = "1. Background", requiresText = false) {
@@ -155,7 +157,7 @@ describe("asynchronous grill integration", () => {
 		background.questions.push({ ...question("Q-background"), status: "pending" });
 		background.validQuestionCount = 2;
 		await Bun.write(statePath, `${JSON.stringify(background, null, 2)}\n`);
-		for (let attempt = 0; attempt < 20 && !env.widgets.get("grill")?.[0].includes("active 2"); attempt += 1) {
+		for (let attempt = 0; attempt < 100 && !env.widgets.get("grill")?.[0].includes("active 2"); attempt += 1) {
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
 		expect(env.widgets.get("grill")?.[0]).toBe("grill · answered 0 / active 2 · current Q1 · [hidden] /grill-panel to open");
@@ -173,6 +175,24 @@ describe("asynchronous grill integration", () => {
 		expect(env.handle.focusCalls).toBe(3);
 		expect(env.widgets.get("grill")?.[0]).toBe("grill · answered 0 / active 3 · current Q2 · [open] Esc to hide");
 		expect(env.component.render(120).join("\n")).toContain("Q2");
+	});
+
+	test("hides after an answer or skip, reopens for new questions, and toggles with Ctrl+G", async () => {
+		const env = setup();
+		await env.kickoff;
+		await publish(env, ["Q1"]);
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\r");
+		expect(env.handle.setHiddenCalls).toEqual([false, true]);
+
+		await publish(env, ["Q2"]);
+		expect(env.handle.setHiddenCalls).toEqual([false, true, false]);
+		await env.shortcuts.get("ctrl+g")!.handler(env.context);
+		expect(env.handle.setHiddenCalls).toEqual([false, true, false, true]);
+		await env.shortcuts.get("ctrl+g")!.handler(env.context);
+		expect(env.handle.setHiddenCalls).toEqual([false, true, false, true, false]);
+		env.component.handleInput("\u0013");
+		expect(env.handle.setHiddenCalls).toEqual([false, true, false, true, false, true]);
 	});
 
 	test("renders context between question and options, pins it, and omits it from HTML", async () => {

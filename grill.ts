@@ -949,6 +949,7 @@ function commitPanelAnswer(runtime: Runtime, pi: ExtensionAPI, answer: AskAnswer
 			status: committed?.status ?? "answered",
 		});
 		maybeConfirmConvergence(runtime, pi, answer, onSessionFinished);
+		hideRuntimePanel(runtime);
 		return true;
 	} catch (error) {
 		notify(runtime.context, `grill failed to write the answer: ${error instanceof Error ? error.message : String(error)}`, "error");
@@ -968,6 +969,7 @@ function commitPanelSkip(runtime: Runtime, pi: ExtensionAPI, id: string): boolea
 		}, runtime.config.optionScrollThreshold);
 		runtime.pendingConvergenceQuestionIds.delete(id);
 		ensureAnswerEvents(runtime, pi).enqueue({ id, value: "__skipped__", label: SKIP_STATUS_NOTE, index: 0, reason: "", status: "skipped" });
+		hideRuntimePanel(runtime);
 		return true;
 	} catch (error) {
 		notify(runtime.context, `grill failed to write the skip: ${error instanceof Error ? error.message : String(error)}`, "error");
@@ -1374,6 +1376,15 @@ function createPanelComponent(
 	};
 }
 
+function hideRuntimePanel(runtime: Runtime): void {
+	const panel = runtime.panel;
+	if (!panel) return;
+	panel.handle?.setHidden(true);
+	panel.handle?.unfocus();
+	panel.hidden = true;
+	setWidget(runtime);
+}
+
 function openOrFocusPanel(runtime: Runtime, context: ExtensionContext, pi: ExtensionAPI, onSessionFinished?: (runtime: Runtime) => void): void {
 	if (runtime.panel) {
 		runtime.panel.handle?.setHidden(false);
@@ -1514,6 +1525,23 @@ export default function grillExtension(pi: ExtensionAPI): void {
 		renderResult(result, _options, theme) {
 			const text = result.content[0];
 			return new Text(theme.fg("success", text?.type === "text" ? text.text : "grill question complete"), 0, 0);
+		},
+	});
+
+	pi.registerShortcut(Key.ctrl("g"), {
+		description: "Toggle the active Grill panel",
+		handler: async (context) => {
+			if (context.mode !== "tui") return;
+			const runtime = activeRuntime(runtimes, context.cwd);
+			if (!runtime) {
+				notify(context, "No active /grill session in this directory.", "warning");
+				return;
+			}
+			if (runtime.panel && !runtime.panel.hidden) {
+				hideRuntimePanel(runtime);
+				return;
+			}
+			openOrFocusPanel(runtime, context, pi, finishSession);
 		},
 	});
 
