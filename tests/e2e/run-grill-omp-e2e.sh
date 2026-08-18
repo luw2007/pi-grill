@@ -30,7 +30,7 @@ fi
 E2E="$(mktemp -d /tmp/grill-omp-e2e.XXXXXX)"
 PORT=$((20000 + RANDOM % 20000))
 SERVER_PID=""
-LOG="$E2E/session.log"
+LOG="${GRILL_OMP_E2E_LOG:-/tmp/grill-omp-e2e.log}"
 
 cleanup() {
 	[[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
@@ -89,8 +89,10 @@ expect {
 # OMP queues idle followUps without starting a turn; a typed message starts it.
 drain 1
 send "go\r"
+# "Questions ◀" is unique to the rendered panel; the question text also
+# appears later in the chat transcript and would false-positive.
 expect {
-	"Which storage layer should the demo use?" {}
+	"Questions ◀" {}
 	timeout { puts "FAIL: Q1 never published"; exit 1 }
 }
 drain 2
@@ -101,10 +103,35 @@ expect {
 }
 send "\x1b"
 drain 2
-send "/grill-panel\r"
+# The interrupt restores the aborted followUp into the editor as a draft;
+# clear it or the typed command is appended to the draft and sent as chat.
+send "\x03"
+drain 1
+# A no-arg slash command keeps the autocomplete popup open, where the first
+# Enter only accepts the suggestion; a second Enter submits the command.
+# When the first Enter already submitted, the second is a no-op on an empty
+# editor, so double-Enter is safe in both host behaviors.
+send "/grill-panel"
+drain 1
+send "\r"
+drain 1
+send "\r"
 expect {
-	"Which storage layer should the demo use?" {}
+	"Questions ◀" {}
 	timeout { puts "FAIL: /grill-panel did not reopen the panel"; exit 1 }
+}
+# The 90%-wide overlay covers the widget line, so [open] never reaches the
+# byte stream while the panel is visible; "Questions ◀" is panel-only.
+# Answer commit path: Enter enters the answer pane, Enter submits the
+# recommended option; the commit hides the panel via hideRuntimePanel — the
+# exact path that crashed on the raw OMP handle (missing unfocus).
+drain 1
+send "\r"
+drain 1
+send "\r"
+expect {
+	"answered 1 / active 1" {}
+	timeout { puts "FAIL: answer commit did not land"; exit 1 }
 }
 send "\x04"
 drain 1
@@ -121,4 +148,8 @@ if grep -aq "closed unexpectedly" "$LOG"; then
 	echo "FAIL: panel session was torn down by the interrupt"
 	exit 1
 fi
-echo "OMP E2E PASS: panel opened, Esc hid without crashing the host, interrupt kept the session, /grill-panel reopened"
+if grep -aq "failed to write the" "$LOG"; then
+	echo "FAIL: a commit-path handle call failed"
+	exit 1
+fi
+echo "OMP E2E PASS: panel opened, Esc hid without crashing the host, interrupt kept the session, /grill-panel reopened, answer committed"
