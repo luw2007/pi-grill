@@ -16,7 +16,7 @@ Uncommitted `README.md` and `tests/grill-responsive-navigation.test.ts` existed 
 
 | Node | Role / model | Isolation | Attempt | Frozen contract | Completion signal | Worker surface UUID | Original / marked tab title | Cleanup |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| B4 | acceptance / `glm_anthropic/glm-5.2` | `../grill-wt/bug-accept-filesystem` | `bug-fs-a1-2fb3125a` | Read-only acceptance of BUG-9 and BUG-10 against source, bug records, and named regression test. No code/test/doc edits. | `.done/bug-fs-a1-2fb3125a` contains report commit SHA. | pending | pending | pending acceptance |
-| B5 | host-contract review / `claude_sub2api/claude-sonnet-5` | `../grill-wt/bug-accept-host` | `bug-host-a1-058a9132` | Read-only acceptance of BUG-11 and BUG-12 against source, README, named test, and actual host dist. No code/test/doc edits. | `.done/bug-host-a1-058a9132` contains report commit SHA. | pending | pending | pending acceptance |
+| B4 | acceptance / `glm_anthropic/glm-5.2` | `../grill-wt/bug-accept-filesystem` | `bug-fs-a1-2fb3125a` | Read-only acceptance of BUG-9 and BUG-10 against source, bug records, and named regression test. No code/test/doc edits. | `.done/bug-fs-a1-2fb3125a` contains report commit SHA. | `CC0DA700-967F-4A4C-A512-A4E3DC29BE91` | `Terminal` / `Terminal λ` | pending acceptance |
+| B5 | host-contract review / `claude_sub2api/claude-sonnet-5` | `../grill-wt/bug-accept-host` | `bug-host-a1-058a9132` | Read-only acceptance of BUG-11 and BUG-12 against source, README, named test, and actual host dist. No code/test/doc edits. | `.done/bug-host-a1-058a9132` contains report commit SHA. | `36834045-8C70-4599-AE88-EAB2D9030716` | `Terminal` / `Terminal λ` | pending acceptance |
 
 Frozen source: current `main` commit at ledger commit time. Existing dirty `grill.ts` and `tests/grill-responsive-navigation.test.ts` are user-owned and excluded from worker ownership.
