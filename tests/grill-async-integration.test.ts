@@ -201,7 +201,7 @@ describe("asynchronous grill integration", () => {
 		expect(rendered).toContain("7-16 / 18");
 	});
 
-	test("hides after an answer or skip, reopens for new questions, and toggles with Ctrl+G", async () => {
+	test("hides after an answer or skip, reopens for new questions, and toggles with Ctrl+Alt+G", async () => {
 		const env = setup();
 		await env.kickoff;
 		await publish(env, ["Q1"]);

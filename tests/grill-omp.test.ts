@@ -15,6 +15,6 @@ describe("OMP extension entrypoint", () => {
 
 		expect(Object.keys(commands)).toEqual(["grill-panel", "grill"]);
 		expect(Object.keys(tools)).toEqual(["grill_ask"]);
-		expect(Object.keys(shortcuts)).toEqual(["ctrl+g"]);
+		expect(Object.keys(shortcuts)).toEqual(["ctrl+alt+g"]);
 	});
 });
