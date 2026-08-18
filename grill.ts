@@ -891,7 +891,7 @@ function ensureAnswerEvents(runtime: Runtime, pi: ExtensionAPI): ReturnType<type
 		schedule: (flush) => setTimeout(flush, 500),
 		cancel: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
 		send: (answers) => {
-			const content = `${answers.map((answer) => `${answer.id}: ${answer.label}${answer.reason ? ` (reason: ${answer.reason})` : ""}`).join("\n")}\n\n${stateSummary(runtime.state)}`;
+			const content = `${answers.map((answer) => `${answer.id}: ${answer.label}${answer.reason ? ` (reason: ${answer.reason})` : ""}`).join("\n")}\n\n${incrementalSummary(runtime.state, runtime.paths.json)}`;
 			pi.sendMessage({
 				customType: "grill-answers",
 				content,
@@ -1021,7 +1021,7 @@ function commitPanelNote(runtime: Runtime, pi: ExtensionAPI, note: string): bool
 		const latest = next.notes[next.notes.length - 1] ?? note.trim();
 		pi.sendMessage({
 			customType: "grill-note",
-			content: `User note: ${latest}\n\n${stateSummary(next)}`,
+			content: `User note: ${latest}\n\n${incrementalSummary(next, runtime.paths.json)}`,
 			display: true,
 			details: { note: latest, notes: next.notes, statePath: runtime.paths.json, state: next },
 		}, { triggerTurn: true, deliverAs: "steer" });
@@ -1554,6 +1554,17 @@ function stateSummary(state: GrillState): string {
 	const skippedLine = skipped.length ? `\n\nSkipped (user chose to skip; does not block convergence; still re-answerable):\n${skipped.map((question) => `- ${question.id} (${question.section}): ${question.question}`).join("\n")}` : "";
 	const notesLine = state.notes.length ? `\n\nUser notes (not tied to a question):\n${state.notes.map((note) => `- ${note}`).join("\n")}` : "";
 	return `State summary (answered ${state.answeredCount} / active ${state.validQuestionCount}). This summary is the latest state; you normally do not need to read the JSON.\n\nSection index:\n${sections}\n\nOpen questions:\n${openList}${skippedLine}${notesLine}`;
+}
+
+// Incremental summary for per-answer/per-note steer events: full summaries accumulate in model
+// context across a long interview (each delivered message persists), so events carry only what
+// changed plus the open frontier; the grill_ask result keeps the full stateSummary.
+function incrementalSummary(state: GrillState, statePath: string): string {
+	const open = state.questions.filter((question) => question.status === "pending" || question.status === "current");
+	const openList = open.length
+		? open.map((question) => `- [${question.status}] ${question.id} (${question.section}): ${question.question}`).join("\n")
+		: "(no pending/current questions)";
+	return `Open questions:\n${openList}\n\nAnswered ${state.answeredCount} / active ${state.validQuestionCount}. Full state (sections, skipped, notes): ${statePath}`;
 }
 
 export default function grillExtension(pi: ExtensionAPI): void {

@@ -483,6 +483,10 @@ describe("events and convergence (EVENT)", () => {
 			expect(env.messages[0].message.details.answers).toEqual([
 				{ id: "Q1", value: "__skipped__", label: SKIP_STATUS_NOTE, index: 0, reason: "", status: "skipped" },
 			]);
+			const content = env.messages[0].message.content as string;
+			expect(content).toContain("Open questions:");
+			expect(content).toContain("Full state (sections, skipped, notes):");
+			expect(content).not.toContain("Section index:");
 		} finally {
 			globalThis.setTimeout = originalSetTimeout;
 			globalThis.clearTimeout = originalClearTimeout;
