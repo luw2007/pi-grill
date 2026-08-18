@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import grillModule from "../grill.ts";
 import { SKIP_STATUS_NOTE, applyNote, consumeConvergenceAnswer } from "../grill.ts";
@@ -15,7 +15,8 @@ afterEach(() => {
 });
 
 function statePathFor(cwd: string, content: string): string {
-	return join(tmpdir(), "grill", basename(cwd), `${createHash("sha1").update(content).digest("hex")}.json`);
+	const project = `${basename(cwd) || "root"}-${createHash("sha1").update(cwd).digest("hex").slice(0, 8)}`;
+	return join(tmpdir(), "grill", project, `${createHash("sha1").update(content).digest("hex")}.json`);
 }
 
 function createEnv(options: { cwd?: string; mode?: string; hasUI?: boolean } = {}) {
@@ -129,7 +130,7 @@ describe("commands (CMD)", () => {
 		const statePath = statePathFor(env.cwd, content);
 		expect(existsSync(statePath)).toBe(true);
 		expect(existsSync(statePath.replace(/\.json$/, ".html"))).toBe(true);
-		expect(readdirSync(join(tmpdir(), "grill", basename(env.cwd))).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+		expect(readdirSync(dirname(statePath)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 		expect(env.notifications.some((message) => message.includes("grill state started"))).toBe(true);
 		expect(env.userMessages).toHaveLength(1);
 		expect(env.userMessages[0]!.message).toContain(statePath);
@@ -201,7 +202,7 @@ describe("commands (CMD)", () => {
 		const env = createEnv();
 		const content = `audit-corrupt-${env.cwd}`;
 		const statePath = statePathFor(env.cwd, content);
-		mkdirSync(join(tmpdir(), "grill", basename(env.cwd)), { recursive: true });
+		mkdirSync(dirname(statePath), { recursive: true });
 		const corrupt = `${JSON.stringify({ schemaVersion: 1, questions: [] }, null, 2)}\n`;
 		writeFileSync(statePath, corrupt, "utf8");
 		await env.start(content);
@@ -209,6 +210,41 @@ describe("commands (CMD)", () => {
 		expect(env.notifications).toContainEqual(expect.stringContaining("delete or repair"));
 		expect(env.widgets.size).toBe(0);
 		expect(readFileSync(statePath, "utf8")).toBe(corrupt);
+	});
+
+	test("FS-01: same-named projects with the same idea never share state", async () => {
+		const parentA = mkdtempSync(join(tmpdir(), "grill-audit-coll-a-"));
+		const parentB = mkdtempSync(join(tmpdir(), "grill-audit-coll-b-"));
+		tempDirs.push(parentA, parentB);
+		const cwdA = join(parentA, "app");
+		const cwdB = join(parentB, "app");
+		mkdirSync(cwdA);
+		mkdirSync(cwdB);
+		const content = "audit-collision-same-idea";
+		expect(statePathFor(cwdA, content)).not.toBe(statePathFor(cwdB, content));
+		const envA = createEnv({ cwd: cwdA });
+		await envA.start(content);
+		await publish(envA, [question("Q1")]);
+		envA.component.handleInput(RIGHT);
+		envA.component.handleInput(ENTER);
+		await envA.shutdown();
+		const envB = createEnv({ cwd: cwdB });
+		await envB.start(content);
+		expect(envB.ui.selectCalls).toEqual([]);
+		expect(envB.widgets.get("grill")?.[0]).toContain("answered 0 / active 0");
+	});
+
+	test("FS-02: a purged session directory neither crashes the host nor loses the next answer", async () => {
+		const env = createEnv();
+		const content = `audit-purge-${env.cwd}`;
+		await env.start(content);
+		await publish(env, [question("Q1")]);
+		const statePath = statePathFor(env.cwd, content);
+		rmSync(dirname(statePath), { recursive: true, force: true });
+		env.component.handleInput(RIGHT);
+		env.component.handleInput(ENTER);
+		expect(existsSync(statePath)).toBe(true);
+		expect(JSON.parse(readFileSync(statePath, "utf8")).questions[0].status).toBe("answered");
 	});
 
 	test("CMD-06/LIFE-03: rerunning targets the latest runtime for the cwd", async () => {

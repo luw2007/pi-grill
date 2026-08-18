@@ -377,7 +377,9 @@ function initialState(content: string, cwd: string): GrillState {
 }
 
 function sessionPaths(cwd: string, content: string): SessionPaths {
-	const directory = path.join(os.tmpdir(), "grill", path.basename(cwd) || "root");
+	// basename alone collides across same-named projects; a cwd digest keeps the path unique per project.
+	const project = `${path.basename(cwd) || "root"}-${createHash("sha1").update(cwd).digest("hex").slice(0, 8)}`;
+	const directory = path.join(os.tmpdir(), "grill", project);
 	const digest = createHash("sha1").update(content).digest("hex");
 	return {
 		directory,
@@ -558,6 +560,7 @@ function readJsonState(file: string): GrillState {
 }
 
 function writeAtomic(file: string, content: string): void {
+	fs.mkdirSync(path.dirname(file), { recursive: true }); // self-heal after tmpdir purges
 	const temporary = `${file}.${process.pid}.tmp`;
 	fs.writeFileSync(temporary, content, "utf8");
 	fs.renameSync(temporary, file);
@@ -678,6 +681,11 @@ function startRuntime(paths: SessionPaths, cwd: string, context: ExtensionContex
 	let runtime: Runtime | undefined;
 	const watcher = fs.watch(paths.directory, { persistent: false }, (_event, filename) => {
 		if (runtime && (!filename || filename.toString() === path.basename(paths.json))) syncFromDisk(runtime);
+	});
+	watcher.on("error", (error) => {
+		// An unhandled FSWatcher error (e.g. the tmp directory was purged) would crash the host process.
+		watcher.close();
+		notify(context, `grill stopped watching ${paths.directory} (${error instanceof Error ? error.message : String(error)}); external JSON edits no longer sync, answers still persist.`, "warning");
 	});
 	runtime = { paths, cwd, context, state, watcher, closed: false, panelGeneration: 0, pendingConvergenceQuestionIds: new Set(), config };
 	return runtime;

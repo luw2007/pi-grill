@@ -84,7 +84,7 @@ Answers arrive back asynchronously as a `grill-answers` custom message (batched 
 
 ## State
 
-Each session has a single JSON state source under `<tmpdir>/grill/<project>/<hash>.json`, plus an HTML mirror rendered from it. The JSON is authoritative: the panel, the status widget, and the plan all derive from it. The section index is a derived `section → [{ id, status }]` projection of `questions`; it is not persisted as a second source of truth.
+Each session has a single JSON state source under `<tmpdir>/grill/<project>-<cwd-digest>/<hash>.json` (the digest keeps same-named projects apart), plus an HTML mirror rendered from it. The JSON is authoritative: the panel, the status widget, and the plan all derive from it. The section index is a derived `section → [{ id, status }]` projection of `questions`; it is not persisted as a second source of truth.
 
 The state is `schemaVersion 4`. Upgrades are **not** backward compatible: a state file from an older schema, or one with missing or conflicting required fields, is treated as corrupt. pi-grill refuses to load it, leaves the file untouched, and asks you to delete or repair it.
 
@@ -95,11 +95,12 @@ Optional, at `~/.pi/agent/grill.config.json`:
 ```json
 {
   "convergeKeywords": ["confirm", "converge", "yes"],
-  "optionScrollThreshold": 8
+  "optionScrollThreshold": 8,
+  "toggleShortcut": "ctrl+alt+g"
 }
 ```
 
-`optionScrollThreshold` is how many option blocks are shown before the answer pane starts scrolling (1–100, default 8). An invalid config is reported and safe defaults are used.
+`optionScrollThreshold` is how many option blocks are shown before the answer pane starts scrolling (1–100, default 8). `toggleShortcut` controls the panel shortcut using Pi key syntax (default `ctrl+alt+g`); choose a key that does not collide with a Pi built-in or another extension. An invalid config is reported and safe defaults are used.
 
 ## Alternate entrypoint
 

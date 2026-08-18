@@ -87,8 +87,18 @@ describe("option viewport and config", () => {
 		expect(normalizeOptionViewport(9, 2, 4, 8, false)).toEqual({ selectedIndex: 3, offset: 0 });
 	});
 
-	test("uses default 8 and rejects unsafe thresholds", () => {
-		expect(parseGrillConfig(undefined)).toEqual({ convergeKeywords: ["confirm", "converge", "yes", "确认", "生成"], optionScrollThreshold: 8 });
+	test("uses a configurable valid toggle shortcut and rejects invalid formats", () => {
+		expect(parseGrillConfig(undefined).toggleShortcut).toBe("ctrl+alt+g");
+		expect(parseGrillConfig({ toggleShortcut: "alt+f8" }).toggleShortcut).toBe("alt+f8");
+		for (const toggleShortcut of ["", "ctrl+ctrl+g", "meta+g", "ctrl+unknown", "ctrl+shift"]) {
+			expect(() => parseGrillConfig({ toggleShortcut })).toThrow("toggleShortcut");
+		}
+	});
+
+	test("uses default values and rejects unsafe thresholds", () => {
+		const defaults = parseGrillConfig(undefined);
+		expect(defaults.convergeKeywords).toEqual(["confirm", "converge", "yes", "确认", "生成"]);
+		expect(defaults.optionScrollThreshold).toBe(8);
 		expect(parseGrillConfig({ optionScrollThreshold: 12 }).optionScrollThreshold).toBe(12);
 		expect(() => parseGrillConfigText("{")).toThrow();
 		const notifications: string[] = [];
