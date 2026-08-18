@@ -943,7 +943,10 @@ function maybeConfirmConvergence(runtime: Runtime, pi: ExtensionAPI, answer: Ask
 		onConfirmed: () => {
 			finished = true;
 			const statePath = runtime.paths.json;
-			pi.sendUserMessage(planPrompt(runtime), runtime.context.isIdle() ? undefined : { deliverAs: "followUp" });
+			// Always followUp: an idle check races the agent starting a run, and prompt() without a
+			// streamingBehavior throws mid-stream, silently dropping this message. followUp runs
+			// immediately when idle and queues when streaming.
+			pi.sendUserMessage(planPrompt(runtime), { deliverAs: "followUp" });
 			onSessionFinished?.(runtime);
 			notify(runtime.context, `grill interview converged; the panel is closed. State kept at ${statePath} — rerun /grill with the same description to resume, or delete it yourself.`, "info");
 		},
@@ -1667,7 +1670,7 @@ export default function grillExtension(pi: ExtensionAPI): void {
 			renderHtml(paths, next);
 			setWidget(runtime);
 			notify(context, `grill state started: ${paths.json}`, "info");
-			pi.sendUserMessage(buildInterviewPrompt(runtime), context.isIdle() ? undefined : { deliverAs: "followUp" });
+			pi.sendUserMessage(buildInterviewPrompt(runtime), { deliverAs: "followUp" }); // see planPrompt send: unconditional followUp avoids the idle-check race
 		},
 	});
 

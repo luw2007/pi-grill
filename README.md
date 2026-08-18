@@ -33,6 +33,8 @@ The agent then calls the `grill_ask` tool with one or more questions. They appea
 | `Esc` | Hide the panel; it reopens automatically for a new question |
 | `Ctrl+C` / `Ctrl+D` | Return focus to the editor, then abort / shut down |
 
+> Terminal note: `Ctrl+1`…`Ctrl+0` and `Ctrl+Alt+G` need a terminal with the kitty keyboard protocol or xterm modifyOtherKeys (ghostty, kitty, WezTerm, iTerm2 — pi negotiates this automatically). In Terminal.app or default tmux those chords have no distinct encoding and arrive as plain keystrokes: use the arrow keys to reach ledger rows, and rebind the toggle via `toggleShortcut` in the [configuration](#configuration).
+
 Ordinary options commit on `Enter`. Options marked `requiresText`, and the built-in *Something else (type it)*, open a mandatory text field first.
 
 After a successful answer or skip, the panel hides while the agent continues investigating. Publishing a new question reopens it, selects that batch's current question, and scrolls the ledger until it is visible.

@@ -134,6 +134,7 @@ describe("commands (CMD)", () => {
 		expect(env.notifications.some((message) => message.includes("grill state started"))).toBe(true);
 		expect(env.userMessages).toHaveLength(1);
 		expect(env.userMessages[0]!.message).toContain(statePath);
+		expect(env.userMessages[0]!.options).toEqual({ deliverAs: "followUp" });
 		expect(env.widgets.get("grill")?.[0]).toContain("answered 0 / active 0");
 		expect(env.widgets.get("grill")?.[0]).toContain("current none");
 		expect(env.widgets.get("grill")?.[1]).toBe(statePath);
