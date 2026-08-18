@@ -18,6 +18,7 @@ import {
 	parseGrillConfig,
 	parseGrillConfigText,
 	resolveGrillConfig,
+	resolveToggleShortcut,
 	runConvergenceConfirmation,
 	validateAnswerBatchTransition,
 	validateState,
@@ -104,6 +105,9 @@ describe("option viewport and config", () => {
 		const notifications: string[] = [];
 		expect(resolveGrillConfig("{", (message) => notifications.push(message)).optionScrollThreshold).toBe(8);
 		expect(notifications).toHaveLength(1);
+		const shortcutWarnings: string[] = [];
+		expect(resolveToggleShortcut("{\"toggleShortcut\":\"meta+g\"}", (message) => shortcutWarnings.push(message))).toBe("ctrl+alt+g");
+		expect(shortcutWarnings).toContainEqual(expect.stringContaining("toggleShortcut"));
 		for (const value of [0, -1, 1.5, 101, Number.MAX_SAFE_INTEGER]) {
 			expect(() => parseGrillConfig({ optionScrollThreshold: value })).toThrow("optionScrollThreshold");
 		}

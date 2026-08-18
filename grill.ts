@@ -252,6 +252,10 @@ export function resolveGrillConfig(text: string | undefined, onInvalid: (message
 	}
 }
 
+export function resolveToggleShortcut(text: string | undefined, onInvalid: (message: string) => void): KeyId {
+	return resolveGrillConfig(text, onInvalid).toggleShortcut;
+}
+
 function grillConfigPath(): string {
 	return path.join(os.homedir(), ".pi", "agent", "grill.config.json");
 }
@@ -1573,7 +1577,7 @@ export default function grillExtension(pi: ExtensionAPI): void {
 		closeRuntime(runtime);
 		runtimes.delete(runtime.paths.json);
 	};
-	const toggleShortcut = resolveGrillConfig(fs.existsSync(grillConfigPath()) ? fs.readFileSync(grillConfigPath(), "utf8") : undefined, () => {}).toggleShortcut;
+	const toggleShortcut = resolveToggleShortcut(fs.existsSync(grillConfigPath()) ? fs.readFileSync(grillConfigPath(), "utf8") : undefined, (message) => console.warn(`Invalid grill.config.json; falling back to ${DEFAULT_TOGGLE_SHORTCUT}: ${message}`));
 
 	pi.registerTool({
 		name: "grill_ask",
