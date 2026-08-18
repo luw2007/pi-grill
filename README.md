@@ -26,20 +26,23 @@ The agent then calls the `grill_ask` tool with one or more questions. They appea
 
 | Keys | Action |
 | --- | --- |
-| `↑` / `↓` | Move between options |
-| `←` | Previous question in the ledger |
-| `→` / `Enter` | Confirm the selected option |
+| `↑` / `↓` (`k` / `j`) | Move between options or ledger rows |
+| `←` (`h`) | Previous question in the ledger |
+| `→` / `Enter` (`l`) | Confirm the selected option |
 | `Tab` / `Shift+Tab` | Switch between the ledger and the answer pane |
 | `Ctrl+1` … `Ctrl+9`, `Ctrl+0` | Jump straight to ledger question 1–10 |
 | `Ctrl+S` | Skip the current question |
 | `Ctrl+N` | Add a note for the agent, not tied to any question |
+| `?` | Toggle the in-panel key help |
 | `Ctrl+Alt+G` | Toggle the active Grill panel |
-| `Esc` | Hide the panel; it reopens automatically for a new question |
+| `Esc` / `q` | Hide the panel; it reopens automatically for a new question |
 | `Ctrl+C` / `Ctrl+D` | Return focus to the editor, then abort / shut down |
 
 > Terminal note: `Ctrl+1`…`Ctrl+0` and `Ctrl+Alt+G` need a terminal with the kitty keyboard protocol or xterm modifyOtherKeys (ghostty, kitty, WezTerm, iTerm2 — pi negotiates this automatically). In Terminal.app or default tmux those chords have no distinct encoding and arrive as plain keystrokes: use the arrow keys to reach ledger rows, and rebind the toggle via `toggleShortcut` in the [configuration](#configuration).
 
 Ordinary options commit on `Enter`. Options marked `requiresText`, and the built-in *Something else (type it)*, open a mandatory text field first.
+
+On short terminals the panel fits itself to the window: the ledger shrinks first, and if content still overflows, the middle is elided with a `… N lines hidden` marker so the answer area and footer stay visible and interactive.
 
 After a successful answer or skip, the panel hides while the agent continues investigating. Publishing a new question reopens it, selects that batch's current question, and scrolls the ledger until it is visible.
 

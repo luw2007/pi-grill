@@ -44,6 +44,7 @@ function setup() {
 		isFocused() { return true; },
 	};
 	let component: any;
+	const tui = { requestRender() {}, terminal: undefined as { rows: number } | undefined };
 	let done: (() => void) | undefined;
 	const theme = {
 		fg: (_name: string, text: string) => text,
@@ -61,7 +62,7 @@ function setup() {
 		custom(factory: any, options: any) {
 			customCalls.push({ options });
 			done = () => panel.resolve();
-			component = factory({ requestRender() {} }, theme, {}, done);
+			component = factory(tui, theme, {}, done);
 			options.onHandle?.(handle);
 			return panel.promise;
 		},
@@ -88,7 +89,7 @@ function setup() {
 	grillExtension(pi);
 	const initialContent = `integration-${cwd}`;
 	const kickoff = commands.get("grill").handler(initialContent, context);
-	return { cwd, initialContent, kickoff, tools, commands, shortcuts, messages, userMessages, customCalls, handle, widgets, ui, get component() { return component; }, get done() { return done; }, context, notifications, panel };
+	return { cwd, initialContent, kickoff, tools, commands, shortcuts, messages, userMessages, customCalls, handle, widgets, ui, tui, get component() { return component; }, get done() { return done; }, context, notifications, panel };
 }
 
 function question(id: string, section = "1. Background", requiresText = false) {
@@ -636,5 +637,81 @@ describe("asynchronous grill integration", () => {
 		for (let index = 1; index <= 10; index += 1) expect(rendered).toContain(`Q${index}`);
 		const statePath = env.tools.get("grill_ask");
 		expect(statePath).toBeDefined();
+	});
+});
+
+describe("tui design contract", () => {
+	test("short terminals keep the footer and interactive tail visible", async () => {
+		const env = setup();
+		await env.kickoff;
+		env.tui.terminal = { rows: 24 };
+		await publishQuestions(env, Array.from({ length: 12 }, (_, index) => ({
+			id: `Q${index + 1}`,
+			section: "1. Background",
+			question: `Question ${index + 1} with a reasonably long body?`,
+			options: Array.from({ length: 6 }, (_, option) => ({ value: `v${option}`, label: `Option ${option + 1}`, description: `Description ${option + 1}` })),
+		})));
+		env.component.handleInput("\u001b[C");
+		const lines = env.component.render(60);
+		expect(lines.length).toBeLessThanOrEqual(21); // floor(24 * 0.9)
+		expect(lines[2]).toContain("lines hidden");
+		expect(lines.at(-2)).toContain("Esc hide");
+		expect(lines.join("\n")).toContain("Something else (type it)");
+	});
+
+	test("? opens help; Enter is inert; Esc closes help without hiding the panel", async () => {
+		const env = setup();
+		await env.kickoff;
+		await publish(env, ["Q1"]);
+		env.component.handleInput("?");
+		let rendered = env.component.render(120).join("\n");
+		expect(rendered).toContain("Ctrl+1…Ctrl+0");
+		expect(rendered).toContain("ctrl+alt+g");
+		expect(rendered).toContain("? or Esc to close help");
+		env.component.handleInput("\r");
+		expect(env.handle.setHiddenCalls).toEqual([false]);
+		env.component.handleInput("\u001b");
+		rendered = env.component.render(120).join("\n");
+		expect(rendered).not.toContain("? or Esc to close help");
+		expect(env.handle.setHiddenCalls).toEqual([false]);
+	});
+
+	test("vim keys mirror the arrows and q hides the panel", async () => {
+		const env = setup();
+		await env.kickoff;
+		await publishQuestions(env, [
+			{ id: "Q1", section: "1. Background", question: "Q1?", options: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }] },
+			question("Q2"),
+		]);
+		env.component.handleInput("j");
+		expect(env.component.render(120).join("\n")).toContain("> □ Q2");
+		env.component.handleInput("l");
+		env.component.handleInput("h");
+		let rendered = env.component.render(120).join("\n");
+		expect(rendered).toContain("> □ Q1");
+		expect(rendered).toContain("↑↓ select");
+		env.component.handleInput("j");
+		expect(env.component.render(120).join("\n")).toContain("> 2. Beta");
+		env.component.handleInput("k");
+		expect(env.component.render(120).join("\n")).toContain("> 1. Alpha");
+		env.component.handleInput("q");
+		expect(env.handle.setHiddenCalls).toEqual([false, true]);
+	});
+
+	test("vim and help keys go to the text input during free-text entry", async () => {
+		const env = setup();
+		await env.kickoff;
+		const published = await publish(env, ["Q1"]);
+		const statePath = published.details.statePath as string;
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\u001b[B");
+		env.component.handleInput("\r");
+		for (const key of ["j", "k", "?", "q", "h", "l"]) env.component.handleInput(key);
+		expect(env.component.render(120).join("\n")).not.toContain("? or Esc to close help");
+		expect(env.handle.setHiddenCalls).toEqual([false]);
+		env.component.handleInput("\r");
+		expect(env.handle.setHiddenCalls).toEqual([false, true]);
+		const disk = JSON.parse(readFileSync(statePath, "utf8"));
+		expect(disk.questions[0].userChoice).toBe("jk?qhl");
 	});
 });

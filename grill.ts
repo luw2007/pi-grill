@@ -1039,7 +1039,7 @@ function commitPanelNote(runtime: Runtime, pi: ExtensionAPI, note: string): bool
 function createPanelComponent(
 	runtime: Runtime,
 	pi: ExtensionAPI,
-	tui: { requestRender(): void },
+	tui: { requestRender(): void; terminal?: { rows: number } },
 	theme: ExtensionContext["ui"]["theme"],
 	controller: PanelController,
 	onSessionFinished?: (runtime: Runtime) => void,
@@ -1056,9 +1056,12 @@ function createPanelComponent(
 		: 0;
 	let optionScrollOffset = selectedQuestionId ? state.ui.optionScrollOffsetByQuestion[selectedQuestionId] ?? 0 : 0;
 	let phase: QuestionPhase = "select";
+	let helpVisible = false;
+	let listViewSize = LIST_VIEW_SIZE;
 	let pendingOption: GrillOption | undefined;
 	let cached: string[] | undefined;
 	let cachedWidth: number | undefined;
+	let cachedRows: number | undefined;
 	let previousLayout: ResponsiveLayout = "stacked";
 	let checkpointTimer: ReturnType<typeof setTimeout> | undefined;
 	let containerFocused = false;
@@ -1121,7 +1124,7 @@ function createPanelComponent(
 			optionScrollOffset = viewport.offset;
 		}
 		if (clamped < listScrollOffset) listScrollOffset = clamped;
-		if (clamped >= listScrollOffset + LIST_VIEW_SIZE) listScrollOffset = clamped - LIST_VIEW_SIZE + 1;
+		if (clamped >= listScrollOffset + listViewSize) listScrollOffset = clamped - listViewSize + 1;
 		checkpoint();
 		refresh();
 	};
@@ -1203,6 +1206,7 @@ function createPanelComponent(
 	controller.flushUiCheckpoint = flushCheckpoint;
 
 	const hidePanel = () => {
+		helpVisible = false;
 		flushCheckpoint();
 		controller.handle?.setHidden(true);
 		controller.hidden = true;
@@ -1227,6 +1231,22 @@ function createPanelComponent(
 			return;
 		}
 		if (matchesKey(data, runtime.config.toggleShortcut)) {
+			hidePanel();
+			return;
+		}
+		if (helpVisible) {
+			if (matchesKey(data, "?") || matchesKey(data, Key.escape) || matchesKey(data, "q")) {
+				helpVisible = false;
+				refresh();
+			}
+			return;
+		}
+		if (matchesKey(data, "?")) {
+			helpVisible = true;
+			refresh();
+			return;
+		}
+		if (matchesKey(data, "q")) {
 			hidePanel();
 			return;
 		}
@@ -1273,7 +1293,7 @@ function createPanelComponent(
 			refresh();
 			return;
 		}
-		if (matchesKey(data, Key.left)) {
+		if (matchesKey(data, Key.left) || matchesKey(data, "h")) {
 			const index = Math.max(0, rows.findIndex((row) => row.id === selectedQuestionId));
 			selectRow(index - 1);
 			focusedPane = "answer";
@@ -1283,15 +1303,15 @@ function createPanelComponent(
 		}
 		if (focusedPane === "questions") {
 			const index = Math.max(0, rows.findIndex((row) => row.id === selectedQuestionId));
-			if (matchesKey(data, Key.right)) {
+			if (matchesKey(data, Key.right) || matchesKey(data, "l")) {
 				if (selectedQuestionId === null && rows.length > 0) selectRow(index);
 				focusedPane = "answer";
 				checkpoint();
 				refresh();
 				return;
 			}
-			if (matchesKey(data, Key.up)) selectRow(selectedQuestionId === null ? index : index - 1);
-			else if (matchesKey(data, Key.down)) selectRow(selectedQuestionId === null ? index : index + 1);
+			if (matchesKey(data, Key.up) || matchesKey(data, "k")) selectRow(selectedQuestionId === null ? index : index - 1);
+			else if (matchesKey(data, Key.down) || matchesKey(data, "j")) selectRow(selectedQuestionId === null ? index : index + 1);
 			else if (matchesKey(data, Key.enter)) {
 				if (selectedQuestionId === null && rows.length > 0) selectRow(index);
 				focusedPane = "answer";
@@ -1308,8 +1328,8 @@ function createPanelComponent(
 			return;
 		}
 		const options = optionsFor(question);
-		if (matchesKey(data, Key.up) || matchesKey(data, Key.down)) {
-			optionIndex = matchesKey(data, Key.up) ? Math.max(0, optionIndex - 1) : Math.min(options.length - 1, optionIndex + 1);
+		if (matchesKey(data, Key.up) || matchesKey(data, Key.down) || matchesKey(data, "k") || matchesKey(data, "j")) {
+			optionIndex = matchesKey(data, Key.up) || matchesKey(data, "k") ? Math.max(0, optionIndex - 1) : Math.min(options.length - 1, optionIndex + 1);
 			const viewport = normalizeOptionViewport(optionIndex, optionScrollOffset, options.length, runtime.config.optionScrollThreshold, question.options.length > runtime.config.optionScrollThreshold);
 			optionIndex = viewport.selectedIndex;
 			optionScrollOffset = viewport.offset;
@@ -1317,7 +1337,7 @@ function createPanelComponent(
 			refresh();
 			return;
 		}
-		if (matchesKey(data, Key.enter) || matchesKey(data, Key.right)) {
+		if (matchesKey(data, Key.enter) || matchesKey(data, Key.right) || matchesKey(data, "l")) {
 			const option = options[optionIndex];
 			if (option.value === "__other__") {
 				phase = "other";
@@ -1347,17 +1367,36 @@ function createPanelComponent(
 		if (matchesKey(data, Key.escape)) hidePanel();
 	};
 
+	const renderHelp = () => {
+		const item = (keys: string, action: string) => `  ${theme.fg("text", keys.padEnd(16))}${theme.fg("muted", action)}`;
+		return [
+			theme.fg("accent", "Keys"),
+			item("↑↓ / j k", "browse questions · select an option"),
+			item("Enter / → / l", "answer the question · submit the option"),
+			item("← / h", "previous question"),
+			item("Tab", "switch between the questions and answer panes"),
+			item("Ctrl+1…Ctrl+0", "jump to ledger row 1–10"),
+			item("Ctrl+S", "skip the selected question"),
+			item("Ctrl+N", "send the agent a free-form note"),
+			item("?", "toggle this help"),
+			item("Esc / q", "hide the panel"),
+			item(runtime.config.toggleShortcut, "show/hide the panel from anywhere"),
+		];
+	};
 	const renderList = (width: number) => {
 		const lines = [focusedPane === "questions" ? theme.fg("accent", "Questions ◀") : theme.fg("muted", "Questions")];
-		const maxOffset = Math.max(0, rows.length - LIST_VIEW_SIZE);
+		const maxOffset = Math.max(0, rows.length - listViewSize);
 		listScrollOffset = Math.min(maxOffset, Math.max(0, listScrollOffset));
-		for (const row of rows.slice(listScrollOffset, listScrollOffset + LIST_VIEW_SIZE)) {
+		const selectedIndex = rows.findIndex((row) => row.id === selectedQuestionId);
+		if (selectedIndex >= 0 && selectedIndex < listScrollOffset) listScrollOffset = selectedIndex;
+		else if (selectedIndex >= listScrollOffset + listViewSize) listScrollOffset = selectedIndex - listViewSize + 1;
+		for (const row of rows.slice(listScrollOffset, listScrollOffset + listViewSize)) {
 			const selected = row.id === selectedQuestionId;
 			const marker = row.status === "answered" ? "■" : row.status === "skipped" ? "↷" : row.status === "deprecated" ? "△" : row.status === "removed" ? "✕" : "□";
 			const label = `${selected ? ">" : " "} ${marker} ${row.id} ${row.section}`;
 			lines.push(truncateToWidth(selected ? theme.bg("selectedBg", theme.fg("text", label)) : theme.fg(row.answerable ? "muted" : "dim", label), width, ""));
 		}
-		if (rows.length > LIST_VIEW_SIZE) lines.push(theme.fg("dim", `${listScrollOffset + 1}-${Math.min(rows.length, listScrollOffset + LIST_VIEW_SIZE)} / ${rows.length}`));
+		if (rows.length > listViewSize) lines.push(theme.fg("dim", `${listScrollOffset + 1}-${Math.min(rows.length, listScrollOffset + listViewSize)} / ${rows.length}`));
 		return lines;
 	};
 	const renderAnswer = (width: number) => {
@@ -1419,21 +1458,44 @@ function createPanelComponent(
 		get focused() { return containerFocused; },
 		set focused(value: boolean) { containerFocused = value; textInput.focused = value && phase !== "select"; },
 		render(width: number) {
-			if (cached && cachedWidth === width) return cached;
+			const terminalRows = tui.terminal?.rows;
+			if (cached && cachedWidth === width && cachedRows === terminalRows) return cached;
 			const renderWidth = Math.max(1, width);
+			// Matches the host's clip exactly: overlayOptions maxHeight "90%" resolves to
+			// max(1, floor(rows * 0.9)) and overflow is clipped bottom-first (pi-tui tui.js overlay
+			// composite), which would hide the interactive answer pane and the footer while keys
+			// still act on them — so the panel fits the row budget itself.
+			const rowBudget = terminalRows === undefined ? undefined : Math.max(1, Math.floor(terminalRows * 0.9));
 			const metrics = contentLayoutMetrics(state.questions.map(toAskQuestion));
 			previousLayout = chooseResponsiveLayout(renderWidth, metrics, previousLayout);
 			const lines = [theme.fg("accent", "─".repeat(renderWidth)), theme.fg("dim", `grill · answered ${state.answeredCount}/${state.validQuestionCount} · ledger ${rows.length}`), ""];
-			if (previousLayout === "columns") {
+			const chrome = 8; // top rule+header+blank, footer blank+hints+rule, list title, scroll indicator
+			if (helpVisible) {
+				lines.push(...renderHelp());
+			} else if (previousLayout === "columns") {
 				const leftWidth = Math.min(metrics.listWidth, Math.max(18, renderWidth - metrics.answerMinWidth - metrics.gap));
 				const rightWidth = Math.max(1, renderWidth - leftWidth - metrics.gap);
-				lines.push(...joinRenderedColumns(renderList(leftWidth), renderAnswer(rightWidth), leftWidth, rightWidth, metrics.gap));
+				const answerLines = renderAnswer(rightWidth);
+				listViewSize = rowBudget === undefined ? LIST_VIEW_SIZE : Math.max(3, Math.min(LIST_VIEW_SIZE, rowBudget - chrome));
+				lines.push(...joinRenderedColumns(renderList(leftWidth), answerLines, leftWidth, rightWidth, metrics.gap));
 			} else {
-				lines.push(...renderList(renderWidth), theme.fg("borderMuted", "─".repeat(renderWidth)), ...renderAnswer(renderWidth));
+				const answerLines = renderAnswer(renderWidth);
+				listViewSize = rowBudget === undefined ? LIST_VIEW_SIZE : Math.max(3, Math.min(LIST_VIEW_SIZE, rowBudget - chrome - 1 - answerLines.length));
+				lines.push(...renderList(renderWidth), theme.fg("borderMuted", "─".repeat(renderWidth)), ...answerLines);
 			}
-			lines.push("", theme.fg("dim", phase !== "select" ? "Type · Enter confirm · Esc back" : focusedPane === "questions" ? "↑↓ browse · Enter/→ answer · Ctrl+S skip · Ctrl+N note · Esc hide" : "↑↓ select · Enter submit · Ctrl+S skip · Ctrl+N note · ←/Tab panes · Esc hide"), theme.fg("accent", "─".repeat(renderWidth)));
-			cached = lines.map((line) => truncateToWidth(line, renderWidth, ""));
+			lines.push("", theme.fg("dim", helpVisible ? "? or Esc to close help" : phase !== "select" ? "Type · Enter confirm · Esc back" : focusedPane === "questions" ? "↑↓ browse · Enter/→ answer · Ctrl+S skip · ? help · Esc hide" : "↑↓ select · Enter submit · ←/Tab panes · ? help · Esc hide"), theme.fg("accent", "─".repeat(renderWidth)));
+			let fitted = lines;
+			if (rowBudget !== undefined && fitted.length > rowBudget) {
+				// Keep the top rule+header and the interactive tail; name the hidden middle explicitly.
+				// Below 4 rows there is no room for the marker: keep only the interactive tail.
+				const hidden = fitted.length - rowBudget + 1;
+				fitted = rowBudget <= 3
+					? fitted.slice(fitted.length - rowBudget)
+					: [...fitted.slice(0, 2), theme.fg("dim", `… ${hidden} lines hidden — terminal too short`), ...fitted.slice(fitted.length - (rowBudget - 3))];
+			}
+			cached = fitted.map((line) => truncateToWidth(line, renderWidth, ""));
 			cachedWidth = width;
+			cachedRows = terminalRows;
 			return cached;
 		},
 		handleInput,
