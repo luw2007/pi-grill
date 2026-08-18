@@ -177,6 +177,30 @@ describe("asynchronous grill integration", () => {
 		expect(env.component.render(120).join("\n")).toContain("Q2");
 	});
 
+	test("reveals the current question from a published batch without moving watcher-driven selection", async () => {
+		const env = setup();
+		await env.kickoff;
+		const published = await publish(env, Array.from({ length: 15 }, (_, index) => `Q${index + 1}`));
+		env.component.handleInput("\u001b[53;5u");
+		expect(env.component.render(160).join("\n")).toContain("> □ Q5 1. Background");
+
+		const statePath = published.details.statePath as string;
+		const external = JSON.parse(readFileSync(statePath, "utf8"));
+		external.questions[4].context = "watcher refresh marker";
+		await Bun.write(statePath, `${JSON.stringify(external, null, 2)}\n`);
+		for (let attempt = 0; attempt < 100 && !env.component.render(160).join("\n").includes("watcher refresh marker"); attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		const watcherRendered = env.component.render(160).join("\n");
+		expect(watcherRendered).toContain("> □ Q5 1. Background");
+		expect(watcherRendered).toContain("1-10 / 15");
+
+		await publish(env, ["Q16", "Q17", "Q18"]);
+		const rendered = env.component.render(160).join("\n");
+		expect(rendered).toContain("> □ Q16 1. Background");
+		expect(rendered).toContain("7-16 / 18");
+	});
+
 	test("hides after an answer or skip, reopens for new questions, and toggles with Ctrl+G", async () => {
 		const env = setup();
 		await env.kickoff;
@@ -187,9 +211,9 @@ describe("asynchronous grill integration", () => {
 
 		await publish(env, ["Q2"]);
 		expect(env.handle.setHiddenCalls).toEqual([false, true, false]);
-		await env.shortcuts.get("ctrl+g")!.handler(env.context);
+		await env.shortcuts.get("ctrl+alt+g")!.handler(env.context);
 		expect(env.handle.setHiddenCalls).toEqual([false, true, false, true]);
-		await env.shortcuts.get("ctrl+g")!.handler(env.context);
+		await env.shortcuts.get("ctrl+alt+g")!.handler(env.context);
 		expect(env.handle.setHiddenCalls).toEqual([false, true, false, true, false]);
 		env.component.handleInput("\u0013");
 		expect(env.handle.setHiddenCalls).toEqual([false, true, false, true, false, true]);
@@ -373,28 +397,37 @@ describe("asynchronous grill integration", () => {
 		expect(env.component.render(120).join("\n")).toContain("All questions handled");
 	});
 
-	test("external pending question exits completion without reopening or focusing a hidden panel", async () => {
+	test("external current question is adopted into a hidden panel without reopening or focusing it", async () => {
 		const env = setup();
 		await env.kickoff;
 		const published = await publish(env, ["Q1"]);
 		const statePath = published.details.statePath as string;
 		env.component.handleInput("\u001b[C");
 		env.component.handleInput("\r");
+		expect(env.component.render(120).join("\n")).toContain("All questions handled");
 		env.component.handleInput("\u001b");
 		const focusCalls = env.handle.focusCalls;
+		const setHiddenCalls = [...env.handle.setHiddenCalls];
 		const background = JSON.parse(readFileSync(statePath, "utf8"));
 		background.questions.push({ ...question("Q-new"), status: "current" });
 		background.currentQuestionId = "Q-new";
 		background.validQuestionCount = 2;
 		await Bun.write(statePath, `${JSON.stringify(background, null, 2)}\n`);
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		for (let attempt = 0; attempt < 100 && !env.component.render(120).join("\n").includes("Q-new?"); attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		const rendered = env.component.render(120).join("\n");
+		expect(rendered).toContain("> □ Q-new 1. Background");
+		expect(rendered).toContain("Q-new?");
+		expect(rendered).not.toContain("No question selected · ← or Ctrl+1…Ctrl+0 to pick one");
+		expect(rendered).not.toContain("All questions handled");
 		expect(env.handle.focusCalls).toBe(focusCalls);
+		expect(env.handle.setHiddenCalls).toEqual(setHiddenCalls);
 		expect(env.widgets.get("grill")?.[0]).toContain("[hidden]");
-		expect(env.component.render(120).join("\n")).toContain("Q-new?");
-		expect(env.component.render(120).join("\n")).not.toContain("All questions handled");
 		await env.commands.get("grill-panel").handler("", env.context);
 		expect(env.handle.focusCalls).toBe(focusCalls + 1);
 	});
+
 
 	test("overwrites an answered choice and emits only the latest grill answer", async () => {
 		const originalSetTimeout = globalThis.setTimeout;

@@ -244,11 +244,15 @@ describe("asynchronous panel model", () => {
 		expect(sent).toEqual([[{ id: "Q1" }], [{ id: "Q2" }]]);
 	});
 
-	test("consumes convergence only for the associated published question", () => {
+	test("matches convergence only for published converge questions and keeps them re-triggerable", () => {
 		const pending = new Set(["Q1"]);
 		const answer = { id: "Q1", value: "yes", label: "Yes", index: 1, reason: "" };
 		expect(consumeConvergenceAnswer(pending, answer, true, ["yes"])).toBe(true);
-		expect(pending.size).toBe(0);
+		expect(pending.has("Q1")).toBe(true);
+		expect(consumeConvergenceAnswer(pending, { ...answer, label: "Not yet", value: "later" }, true, ["yes"])).toBe(false);
+		expect(pending.has("Q1")).toBe(true);
+		expect(consumeConvergenceAnswer(pending, answer, false, ["yes"])).toBe(false);
+		expect(consumeConvergenceAnswer(pending, answer, true, ["yes"])).toBe(true);
 		expect(consumeConvergenceAnswer(pending, { ...answer, id: "Q-later" }, true, ["yes"])).toBe(false);
 	});
 

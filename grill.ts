@@ -117,6 +117,7 @@ type PanelController = {
 	handle?: OverlayHandle;
 	promise: Promise<void>;
 	refresh?: (state: GrillState) => void;
+	revealCurrent?: (id: string) => void;
 	flushUiCheckpoint?: () => void;
 	finish?: () => void;
 };
@@ -589,10 +590,11 @@ function notify(context: ExtensionContext, message: string, type: "info" | "warn
 }
 
 function setWidget(runtime: Runtime): void {
-	const current = runtime.state.currentQuestionId ?? "converged";
-	const visibility = runtime.panel?.hidden
-		? "[hidden] /grill-panel to open"
-		: "[open] Esc to hide";
+	const openQuestionId = runtime.state.currentQuestionId ?? runtime.state.questions.find((question) => question.status === "pending")?.id;
+	const current = openQuestionId ?? (runtime.state.questions.length === 0 ? "none" : "converged");
+	const visibility = runtime.panel && !runtime.panel.hidden
+		? "[open] Esc to hide"
+		: "[hidden] /grill-panel to open";
 	runtime.context.ui.setWidget(STATUS_KEY, [`grill · answered ${runtime.state.answeredCount} / active ${runtime.state.validQuestionCount} · current ${current} · ${visibility}`, runtime.paths.json]);
 }
 
@@ -887,7 +889,7 @@ export function consumeConvergenceAnswer(
 	keywords: readonly string[],
 ): boolean {
 	if (!pendingQuestionIds.has(answer.id)) return false;
-	pendingQuestionIds.delete(answer.id);
+	// The id stays registered so a later re-answer with a converge keyword can still trigger confirmation.
 	if (!canConvergeNow) return false;
 	const pattern = new RegExp(keywords.map(escapeRegExp).join("|"), "i");
 	return pattern.test(`${answer.value} ${answer.label}`);
@@ -928,7 +930,12 @@ function maybeConfirmConvergence(runtime: Runtime, pi: ExtensionAPI, answer: Ask
 		refocus: () => {
 			if (finished) return;
 			const panel = runtime.panel;
-			if (!runtime.closed && panel && panel.generation === generation) panel.handle?.focus();
+			if (runtime.closed || !panel || panel.generation !== generation) return;
+			// The panel was hidden by the answer commit; a decline must bring it back, not focus a hidden overlay.
+			panel.handle?.setHidden(false);
+			panel.hidden = false;
+			panel.handle?.focus?.();
+			setWidget(runtime);
 		},
 	});
 }
@@ -1116,6 +1123,29 @@ function createPanelComponent(
 		wrapTextWithAnsi(value, Math.max(1, width - prefixWidth)).forEach((line, index) => lines.push(`${index === 0 ? prefix : " ".repeat(prefixWidth)}${line}`));
 	};
 
+	// A null selection is the terminal submit surface; it survives only while nothing is open.
+	// Adopting an open question never changes panel visibility or focus.
+	const adoptOpenQuestion = (): boolean => {
+		const newlyOpen = rows.find((row) => row.status === "current") ?? rows.find((row) => row.status === "pending");
+		selectedQuestionId = newlyOpen?.id ?? null;
+		if (!newlyOpen) return false;
+		resetInput();
+		focusedPane = "answer";
+		const question = state.questions.find((item) => item.id === newlyOpen.id);
+		if (question) {
+			const viewport = normalizeOptionViewport(
+				state.ui.selectedOptionByQuestion[question.id] ?? getInitialOptionIndex(question),
+				state.ui.optionScrollOffsetByQuestion[question.id] ?? 0,
+				question.options.length + 1,
+				runtime.config.optionScrollThreshold,
+				question.options.length > runtime.config.optionScrollThreshold,
+			);
+			optionIndex = viewport.selectedIndex;
+			optionScrollOffset = viewport.offset;
+		}
+		return true;
+	};
+
 	controller.refresh = (next) => {
 		const previous = currentQuestion();
 		const wasEditing = phase !== "select";
@@ -1123,11 +1153,9 @@ function createPanelComponent(
 		rows = getLedgerRows(next);
 		const updated = selectedQuestionId ? next.questions.find((question) => question.id === selectedQuestionId) : undefined;
 		if (!updated) {
-			const newlyOpen = rows.find((row) => row.status === "current") ?? rows.find((row) => row.status === "pending");
-			selectedQuestionId = newlyOpen?.id ?? null;
-			if (newlyOpen) focusedPane = "answer";
-			resetInput();
-		} else if (wasEditing && previous && updated.status !== "pending" && updated.status !== "current" && updated.status !== "removed") {
+			if (selectedQuestionId) resetInput(); // the selected row vanished externally; its draft is void
+			adoptOpenQuestion();
+		} else if (wasEditing && previous && updated && updated.status !== "pending" && updated.status !== "current" && updated.status !== "removed") {
 			resetInput();
 			notify(runtime.context, `${updated.id} was changed externally to ${updated.status}; the local draft was discarded.`, "warning");
 		}
@@ -1139,6 +1167,10 @@ function createPanelComponent(
 			optionScrollOffset = viewport.offset;
 		}
 		refresh();
+	};
+	controller.revealCurrent = (id) => {
+		const index = rows.findIndex((row) => row.id === id);
+		if (index >= 0) selectRow(index);
 	};
 	controller.flushUiCheckpoint = flushCheckpoint;
 
@@ -1310,7 +1342,8 @@ function createPanelComponent(
 					theme.fg("muted", "Use Ctrl+1…Ctrl+9 / Ctrl+0, or pick a row in the list, to re-answer a confirmed or skipped question."),
 				];
 			}
-			return [...lines, theme.fg("dim", "No questions yet")];
+			if (rows.length === 0) return [...lines, theme.fg("dim", "No questions yet")];
+			return [...lines, theme.fg("dim", "No question selected · ← or Ctrl+1…Ctrl+0 to pick one")];
 		}
 		wrap(lines, "", theme.fg("text", question.question), width);
 		if (question.context?.trim()) {
@@ -1383,6 +1416,10 @@ function hideRuntimePanel(runtime: Runtime): void {
 	panel.handle?.unfocus();
 	panel.hidden = true;
 	setWidget(runtime);
+}
+
+function revealPanelCurrent(runtime: Runtime, id: string): void {
+	runtime.panel?.revealCurrent?.(id);
 }
 
 function openOrFocusPanel(runtime: Runtime, context: ExtensionContext, pi: ExtensionAPI, onSessionFinished?: (runtime: Runtime) => void): void {
@@ -1510,8 +1547,10 @@ export default function grillExtension(pi: ExtensionAPI): void {
 			if (!runtime) throw new Error("No active /grill session for this working directory");
 			const questions = params.questions as AskQuestion[];
 			addQuestions(runtime, questions);
+			const currentQuestionId = questions[0]!.id;
 			if (params.converge === true) for (const question of questions) runtime.pendingConvergenceQuestionIds.add(question.id);
 			openOrFocusPanel(runtime, context, pi, finishSession);
+			revealPanelCurrent(runtime, currentQuestionId);
 			const publishedQuestionIds = questions.map((question) => question.id);
 			return {
 				content: [{ type: "text", text: `Published ${publishedQuestionIds.length} question(s) asynchronously; the grill panel is open. The agent does not wait for the user.\n\n${stateSummary(runtime.state)}` }],
@@ -1528,7 +1567,7 @@ export default function grillExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerShortcut(Key.ctrl("g"), {
+	pi.registerShortcut(Key.ctrlAlt("g"), {
 		description: "Toggle the active Grill panel",
 		handler: async (context) => {
 			if (context.mode !== "tui") return;
@@ -1597,6 +1636,7 @@ export default function grillExtension(pi: ExtensionAPI): void {
 			const oldRuntime = runtimes.get(paths.json);
 			if (oldRuntime) closeRuntime(oldRuntime);
 			const runtime = startRuntime(paths, context.cwd, context, next, config);
+			runtimes.delete(paths.json); // re-insert so activeRuntime sees this as the latest session for the cwd
 			runtimes.set(paths.json, runtime);
 			renderHtml(paths, next);
 			setWidget(runtime);

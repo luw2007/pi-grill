@@ -29,13 +29,13 @@ The agent then calls the `grill_ask` tool with one or more questions. They appea
 | `Ctrl+1` … `Ctrl+9`, `Ctrl+0` | Jump straight to ledger question 1–10 |
 | `Ctrl+S` | Skip the current question |
 | `Ctrl+N` | Add a note for the agent, not tied to any question |
-| `Ctrl+G` | Toggle the active Grill panel |
+| `Ctrl+Alt+G` | Toggle the active Grill panel |
 | `Esc` | Hide the panel; it reopens automatically for a new question |
 | `Ctrl+C` / `Ctrl+D` | Return focus to the editor, then abort / shut down |
 
 Ordinary options commit on `Enter`. Options marked `requiresText`, and the built-in *Something else (type it)*, open a mandatory text field first.
 
-After a successful answer or skip, the panel hides while the agent continues investigating. Publishing a new question reopens it.
+After a successful answer or skip, the panel hides while the agent continues investigating. Publishing a new question reopens it, selects that batch's current question, and scrolls the ledger until it is visible.
 
 ### Commands
 
@@ -53,6 +53,8 @@ After a successful answer or skip, the panel hides while the agent continues inv
 ### Ending a session
 
 Convergence is dependency-driven: once no `pending` or `current` questions and no unresolved decision dependencies remain, the agent asks a final confirmation. Section coverage is never a convergence requirement. Confirming writes the plan into the first existing directory among `docs/plans/` and `plans/`, then closes the panel and clears the status widget. The plan derives its body headings and their order freely from substantive content—there is no fixed heading pool, required order, minimum section count, empty sections, or `N/A` placeholders—and always ends with a complete `## Interview transcript`. **The JSON state file is kept** — rerun `/grill` with the same description to resume, or delete it yourself.
+
+Declining the confirmation keeps the interview alive: the panel reopens with focus, and the final question stays re-answerable — answering it again with a converge keyword (default `confirm`, `converge`, `yes`, `确认`, `生成`) asks for confirmation again.
 
 ## Tool contract
 
