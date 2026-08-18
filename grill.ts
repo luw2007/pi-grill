@@ -941,7 +941,7 @@ function maybeConfirmConvergence(runtime: Runtime, pi: ExtensionAPI, answer: Ask
 	if (!consumeConvergenceAnswer(runtime.pendingConvergenceQuestionIds, answer, canConverge(runtime.state), runtime.config.convergeKeywords)) return;
 	const generation = runtime.panel?.generation;
 	let finished = false;
-	runtime.panel?.handle?.unfocus();
+	runtime.panel?.handle?.unfocus?.(); // OMP 17.3.4 overlay handles omit focus/unfocus
 	void runConvergenceConfirmation({
 		confirm: () => runtime.context.ui.confirm("Write the plan?", "This interview has converged. Confirming lets the agent write the plan with write/edit and closes this panel. The JSON state file is kept."),
 		onConfirmed: () => {
@@ -1210,18 +1210,18 @@ function createPanelComponent(
 		flushCheckpoint();
 		controller.handle?.setHidden(true);
 		controller.hidden = true;
-		controller.handle?.unfocus();
+		controller.handle?.unfocus?.(); // OMP 17.3.4 overlay handles omit focus/unfocus
 		setWidget(runtime);
 	};
 
 	const handleInput = (data: string) => {
 		if (matchesKey(data, Key.ctrl("c"))) {
-			controller.handle?.unfocus();
+			controller.handle?.unfocus?.();
 			runtime.context.abort();
 			return;
 		}
 		if (matchesKey(data, Key.ctrl("d"))) {
-			controller.handle?.unfocus();
+			controller.handle?.unfocus?.();
 			runtime.context.shutdown();
 			return;
 		}
@@ -1507,7 +1507,7 @@ function hideRuntimePanel(runtime: Runtime): void {
 	const panel = runtime.panel;
 	if (!panel) return;
 	panel.handle?.setHidden(true);
-	panel.handle?.unfocus();
+	panel.handle?.unfocus?.(); // OMP 17.3.4 overlay handles omit focus/unfocus
 	panel.hidden = true;
 	setWidget(runtime);
 }

@@ -130,13 +130,18 @@ describe("asynchronous grill integration", () => {
 		expect(result.details.state.questions.map((item: any) => item.id)).toEqual(["Q1"]);
 	});
 
-	test("opens when the OMP overlay handle has no focus method", async () => {
+	test("survives the OMP 17.3.4 overlay handle shape: only hide/setHidden/isHidden", async () => {
 		const env = setup();
+		// Real OMP showOverlay handles omit focus AND unfocus; calling either
+		// unguarded throws in the host input dispatch and kills the whole process.
 		delete (env.handle as { focus?: unknown }).focus;
+		delete (env.handle as { unfocus?: unknown }).unfocus;
 		await env.kickoff;
 		await publish(env);
 		expect(env.customCalls).toHaveLength(1);
 		expect(env.handle.setHiddenCalls).toEqual([false]);
+		env.component.handleInput("\u001b"); // Esc must hide, not throw
+		expect(env.handle.setHiddenCalls).toEqual([false, true]);
 		expect(env.notifications).not.toContainEqual(expect.stringContaining("grill panel closed unexpectedly"));
 	});
 
