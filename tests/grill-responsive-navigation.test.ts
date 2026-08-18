@@ -14,6 +14,7 @@ import {
 	joinRenderedColumns,
 	migrateState,
 	normalizeOptionViewport,
+	normalizeOverlayHandle,
 	normalizeUiState,
 	parseGrillConfig,
 	parseGrillConfigText,
@@ -281,6 +282,31 @@ describe("asynchronous panel model", () => {
 		});
 		expect(notifications[0]).toContain("dialog failed");
 		expect(refocused).toBe(true);
+	});
+});
+
+describe("overlay handle facade", () => {
+	test("normalizes any host handle shape into a total interface", () => {
+		// OMP 17.3.4 real shape: only hide/setHidden/isHidden.
+		const calls: string[] = [];
+		const omp = normalizeOverlayHandle({
+			hide: () => calls.push("hide"),
+			setHidden: (hidden: boolean) => calls.push(`setHidden:${hidden}`),
+			isHidden: () => true,
+		});
+		omp.focus();
+		omp.unfocus();
+		omp.hide();
+		omp.setHidden(true);
+		expect(omp.isHidden()).toBe(true);
+		expect(calls).toEqual(["hide", "setHidden:true"]);
+		// Degenerate host: empty object must still be safe, isHidden defaults false.
+		const empty = normalizeOverlayHandle({});
+		empty.hide();
+		empty.setHidden(false);
+		empty.focus();
+		empty.unfocus();
+		expect(empty.isHidden()).toBe(false);
 	});
 });
 

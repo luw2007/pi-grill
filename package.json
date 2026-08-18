@@ -1,49 +1,50 @@
 {
-  "name": "pi-grill",
-  "version": "0.4.0",
-  "description": "Dependency-driven design interview for the pi coding agent. Asynchronous TUI panel, JSON state source, skip/note support, and a final implementation plan.",
-  "keywords": [
-    "pi-package",
-    "pi-extension",
-    "grill",
-    "interview",
-    "planning"
-  ],
-  "license": "MIT",
-  "author": "luw2007",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/luw2007/pi-grill.git"
-  },
-  "homepage": "https://github.com/luw2007/pi-grill",
-  "bugs": {
-    "url": "https://github.com/luw2007/pi-grill/issues"
-  },
-  "type": "module",
-  "files": [
-    "grill.ts",
-    "grill-omp.ts",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "test": "bun test",
-    "typecheck": "tsc -p tsconfig.tests.json",
-    "check": "bun run typecheck && bun test",
-    "e2e": "bash tests/e2e/run-grill-e2e.sh"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "typebox": "*"
-  },
-  "devDependencies": {
-    "@types/node": "^26.2.0",
-    "bun-types": "^1.3.14"
-  },
-  "pi": {
-    "extensions": [
-      "./grill.ts"
-    ]
-  }
+	"name": "pi-grill",
+	"version": "0.4.0",
+	"description": "Dependency-driven design interview for the pi coding agent. Asynchronous TUI panel, JSON state source, skip/note support, and a final implementation plan.",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"grill",
+		"interview",
+		"planning"
+	],
+	"license": "MIT",
+	"author": "luw2007",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/luw2007/pi-grill.git"
+	},
+	"homepage": "https://github.com/luw2007/pi-grill",
+	"bugs": {
+		"url": "https://github.com/luw2007/pi-grill/issues"
+	},
+	"type": "module",
+	"files": [
+		"grill.ts",
+		"grill-omp.ts",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsc -p tsconfig.tests.json",
+		"check": "bun run typecheck && bun test",
+		"e2e": "bash tests/e2e/run-grill-e2e.sh",
+		"e2e:omp": "bash tests/e2e/run-grill-omp-e2e.sh"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
+	},
+	"devDependencies": {
+		"@types/node": "^26.2.0",
+		"bun-types": "^1.3.14"
+	},
+	"pi": {
+		"extensions": [
+			"./grill.ts"
+		]
+	}
 }

@@ -131,6 +131,7 @@ Runs entirely in the pi TUI via `@earendil-works/pi-tui`. No network access and 
 bun test
 bunx tsc -p tsconfig.tests.json
 npm run e2e   # full-loop regression against a real pi TUI with a deterministic local mock model
+npm run e2e:omp   # OMP host-contract regression (crash class: overlay handles missing focus/unfocus); skips if omp is absent
 ```
 
 Host-contract invariants (learned from real pi/OMP behaviour; changes must respect them):

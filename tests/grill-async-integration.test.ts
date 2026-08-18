@@ -137,12 +137,30 @@ describe("asynchronous grill integration", () => {
 		delete (env.handle as { focus?: unknown }).focus;
 		delete (env.handle as { unfocus?: unknown }).unfocus;
 		await env.kickoff;
-		await publish(env);
+		await publish(env, ["Q1", "Q2"]);
 		expect(env.customCalls).toHaveLength(1);
 		expect(env.handle.setHiddenCalls).toEqual([false]);
-		env.component.handleInput("\u001b"); // Esc must hide, not throw
+		env.component.handleInput("\u001b"); // Esc: hidePanel -> unfocus
 		expect(env.handle.setHiddenCalls).toEqual([false, true]);
-		expect(env.notifications).not.toContainEqual(expect.stringContaining("grill panel closed unexpectedly"));
+		env.commands.get("grill-panel").handler("", env.context); // reopen -> focus
+		env.component.handleInput("\u0003"); // Ctrl+C -> unfocus + abort
+		expect(env.context.abortCalls).toBe(1);
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\r"); // answer commit -> hideRuntimePanel -> unfocus
+		expect(JSON.parse(readFileSync(env.widgets.get("grill")![1]!, "utf8")).questions[0].status).toBe("answered");
+		env.component.handleInput("\u0004"); // Ctrl+D -> unfocus + shutdown
+		expect(env.context.shutdownCalls).toBe(1);
+		expect(env.notifications).not.toContainEqual(expect.stringContaining("error"));
+	});
+
+	test("a throwing handle cannot escape into the host input dispatch", async () => {
+		const env = setup();
+		await env.kickoff;
+		await publish(env);
+		env.handle.setHidden = () => { throw new Error("host handle exploded"); };
+		expect(() => env.component.handleInput("\u001b")).not.toThrow();
+		expect(env.notifications).toContainEqual(expect.stringContaining("grill panel handle error: host handle exploded"));
+		expect(() => env.component.render(120)).not.toThrow();
 	});
 
 	test("keeps widget visibility state correct across hide, refresh, command, and publish", async () => {

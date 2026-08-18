@@ -112,10 +112,46 @@ type AskAnswer = {
 	reason: string;
 };
 
+// Total facade over the host OverlayHandle. Hosts deviate from the pi typings at
+// runtime (OMP 17.3.4 handles expose only hide/setHidden/isHidden), and the host
+// input dispatch has no try/catch around extension code, so a missing method must
+// no-op here instead of crashing the whole host process.
+export type SafeOverlayHandle = {
+	hide(): void;
+	setHidden(hidden: boolean): void;
+	isHidden(): boolean;
+	focus(): void;
+	unfocus(): void;
+};
+
+export function normalizeOverlayHandle(handle: Partial<OverlayHandle> & object, onError?: (error: unknown) => void): SafeOverlayHandle {
+	const guard = (run: () => void): void => {
+		try {
+			run();
+		} catch (error) {
+			onError?.(error);
+		}
+	};
+	return {
+		hide: () => guard(() => handle.hide?.()),
+		setHidden: (hidden) => guard(() => handle.setHidden?.(hidden)),
+		isHidden: () => {
+			try {
+				return handle.isHidden?.() ?? false;
+			} catch (error) {
+				onError?.(error);
+				return false;
+			}
+		},
+		focus: () => guard(() => handle.focus?.()),
+		unfocus: () => guard(() => handle.unfocus?.()),
+	};
+}
+
 type PanelController = {
 	generation: number;
 	hidden: boolean;
-	handle?: OverlayHandle;
+	handle?: SafeOverlayHandle;
 	promise: Promise<void>;
 	refresh?: (state: GrillState) => void;
 	revealCurrent?: (id: string) => void;
@@ -941,7 +977,7 @@ function maybeConfirmConvergence(runtime: Runtime, pi: ExtensionAPI, answer: Ask
 	if (!consumeConvergenceAnswer(runtime.pendingConvergenceQuestionIds, answer, canConverge(runtime.state), runtime.config.convergeKeywords)) return;
 	const generation = runtime.panel?.generation;
 	let finished = false;
-	runtime.panel?.handle?.unfocus?.(); // OMP 17.3.4 overlay handles omit focus/unfocus
+	runtime.panel?.handle?.unfocus();
 	void runConvergenceConfirmation({
 		confirm: () => runtime.context.ui.confirm("Write the plan?", "This interview has converged. Confirming lets the agent write the plan with write/edit and closes this panel. The JSON state file is kept."),
 		onConfirmed: () => {
@@ -962,7 +998,7 @@ function maybeConfirmConvergence(runtime: Runtime, pi: ExtensionAPI, answer: Ask
 			// The panel was hidden by the answer commit; a decline must bring it back, not focus a hidden overlay.
 			panel.handle?.setHidden(false);
 			panel.hidden = false;
-			panel.handle?.focus?.();
+			panel.handle?.focus();
 			setWidget(runtime);
 		},
 	});
@@ -1210,18 +1246,18 @@ function createPanelComponent(
 		flushCheckpoint();
 		controller.handle?.setHidden(true);
 		controller.hidden = true;
-		controller.handle?.unfocus?.(); // OMP 17.3.4 overlay handles omit focus/unfocus
+		controller.handle?.unfocus();
 		setWidget(runtime);
 	};
 
 	const handleInput = (data: string) => {
 		if (matchesKey(data, Key.ctrl("c"))) {
-			controller.handle?.unfocus?.();
+			controller.handle?.unfocus();
 			runtime.context.abort();
 			return;
 		}
 		if (matchesKey(data, Key.ctrl("d"))) {
-			controller.handle?.unfocus?.();
+			controller.handle?.unfocus();
 			runtime.context.shutdown();
 			return;
 		}
@@ -1507,7 +1543,7 @@ function hideRuntimePanel(runtime: Runtime): void {
 	const panel = runtime.panel;
 	if (!panel) return;
 	panel.handle?.setHidden(true);
-	panel.handle?.unfocus?.(); // OMP 17.3.4 overlay handles omit focus/unfocus
+	panel.handle?.unfocus();
 	panel.hidden = true;
 	setWidget(runtime);
 }
@@ -1520,7 +1556,7 @@ function openOrFocusPanel(runtime: Runtime, context: ExtensionContext, pi: Exten
 	if (runtime.panel) {
 		runtime.panel.handle?.setHidden(false);
 		runtime.panel.refresh?.(runtime.state);
-		runtime.panel.handle?.focus?.();
+		runtime.panel.handle?.focus();
 		runtime.panel.hidden = false;
 		setWidget(runtime);
 		return;
@@ -1528,11 +1564,38 @@ function openOrFocusPanel(runtime: Runtime, context: ExtensionContext, pi: Exten
 	const generation = ++runtime.panelGeneration;
 	const controller: PanelController = { generation, hidden: false, promise: Promise.resolve() };
 	runtime.panel = controller;
+	// Host boundary: OMP's input dispatch has no try/catch around extension
+	// components, so an exception escaping render/handleInput — or a throwing
+	// host handle method — kills the whole host process. Surface errors loudly
+	// and keep the host alive.
+	let reportedError: string | undefined;
+	const reportPanelError = (surface: string, error: unknown) => {
+		const message = `grill panel ${surface} error: ${error instanceof Error ? error.message : String(error)}`;
+		if (reportedError === message) return;
+		reportedError = message;
+		notify(runtime.context, message, "error");
+	};
 	const promise = context.ui.custom<void>((tui, theme, _keybindings, done) => {
 		controller.finish = () => done(undefined);
 		const component = createPanelComponent(runtime, pi, tui, theme, controller, onSessionFinished);
 		return {
 			...component,
+			render(width: number) {
+				try {
+					return component.render(width);
+				} catch (error) {
+					reportPanelError("render", error);
+					return [`grill panel render error — Esc to hide, /grill-panel to reopen`];
+				}
+			},
+			handleInput(data: string) {
+				try {
+					component.handleInput?.(data);
+				} catch (error) {
+					reportPanelError("input", error);
+					if (matchesKey(data, Key.escape)) hideRuntimePanel(runtime); // Esc always escapes a broken panel
+				}
+			},
 			dispose() {
 				controller.flushUiCheckpoint?.();
 				component.invalidate();
@@ -1541,14 +1604,15 @@ function openOrFocusPanel(runtime: Runtime, context: ExtensionContext, pi: Exten
 	}, {
 		overlay: true,
 		overlayOptions: { anchor: "center", width: "90%", maxHeight: "90%", minWidth: 44 },
-		onHandle: (handle) => {
+		onHandle: (rawHandle) => {
+			const handle = normalizeOverlayHandle(rawHandle, (error) => reportPanelError("handle", error));
 			if (runtime.panel?.generation !== generation) {
 				handle.hide();
 				return;
 			}
 			controller.handle = handle;
 			handle.setHidden(false);
-			handle.focus?.();
+			handle.focus();
 			controller.hidden = false;
 			setWidget(runtime);
 		},

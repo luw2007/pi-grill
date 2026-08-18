@@ -143,6 +143,28 @@ Bun.serve({
 			const demo = demoTurn(transcript);
 			return demo ?? say("Noted — investigating while you answer.");
 		}
+		if (scenario === "omp") {
+			// OMP host-contract regression: publish Q1, then keep the follow-up turn
+			// in flight for 8s so the driver can press Esc against a live turn.
+			if (!published && transcript.includes("design interview")) {
+				published = true;
+				return toolCall("grill_ask", {
+					questions: [{
+						id: "Q1",
+						section: "1. Scope",
+						question: "Which storage layer should the demo use?",
+						options: [
+							{ value: "alpha", label: "Alpha store" },
+							{ value: "beta", label: "Beta store" },
+						],
+						recommended: "beta",
+					}],
+					converge: false,
+				});
+			}
+			await new Promise((resolve) => setTimeout(resolve, 8000));
+			return say("still thinking");
+		}
 		if (!published && transcript.includes("You are running a /grill design interview")) {
 			published = true;
 			return toolCall("grill_ask", {
