@@ -117,4 +117,39 @@ vhs "$TAPE"
 [[ -s "$REPO/assets/demo.gif" ]] || { echo "FAIL: gif not produced"; exit 1; }
 STATE="$(curl -sf "http://127.0.0.1:$PORT/state")"
 echo "$STATE" | jq -e '.published and .converged and .planWritten' >/dev/null || { echo "FAIL: demo turns incomplete: $STATE"; exit 1; }
-echo "DEMO OK: $(du -h "$REPO/assets/demo.gif" | cut -f1) assets/demo.gif"
+
+# Burn key-hint captions into a bottom band. This ffmpeg build lacks drawtext,
+# so ImageMagick renders each caption bar as a PNG and ffmpeg overlays it.
+# Beat boundaries derive from the tape's deterministic sleeps, linearly
+# calibrated against the measured duration (raw visible-part estimate 50.2s).
+DURATION="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$REPO/assets/demo.gif")"
+SCALE="$(echo "$DURATION / 50.2" | bc -l)"
+BEATS=(
+	"0.0|6.9|/grill <idea>  —  the agent starts the interview"
+	"6.9|11.6|[Enter] open answer pane  ·  [↑][↓] browse options"
+	"11.6|15.7|[Enter] accept recommended  —  agent follows up instantly"
+	"15.7|21.3|[Ctrl+N] send the agent a note"
+	"21.3|25.0|[←] previous question  ·  [Ctrl+S] skip it"
+	"25.0|27.8|/grill-panel  —  reopen the panel"
+	"27.8|36.1|[↓] Something else  —  type a custom answer"
+	"36.1|43.1|[Enter] converge  ·  [Yes] the agent writes the plan"
+	"43.1|50.2|docs/plans/…  —  full interview transcript preserved"
+)
+INPUTS=(-i "$REPO/assets/demo.gif")
+CHAIN=""
+PREV="[0:v]"
+for index in "${!BEATS[@]}"; do
+	IFS='|' read -r from to text <<< "${BEATS[$index]}"
+	magick -background 'rgba(10,10,10,0.72)' -fill white -font '/System/Library/Fonts/Menlo.ttc' -pointsize 21 \
+		"label:${text}" -bordercolor 'rgba(10,10,10,0.72)' -border 14x7 "$E2E/cap-$index.png"
+	INPUTS+=(-i "$E2E/cap-$index.png")
+	start="$(echo "$from * $SCALE" | bc -l)"
+	end="$(echo "$to * $SCALE" | bc -l)"
+	OUT="[v$index]"
+	CHAIN+="${PREV}[$((index + 1)):v]overlay=x=(W-w)/2:y=H-h-10:enable='between(t,${start},${end})'${OUT};"
+	PREV="$OUT"
+done
+ffmpeg -y -v error "${INPUTS[@]}" -filter_complex "${CHAIN}${PREV}split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse[out]" -map "[out]" "$E2E/captioned.gif"
+[[ -s "$E2E/captioned.gif" ]] || { echo "FAIL: caption pass produced nothing"; exit 1; }
+mv "$E2E/captioned.gif" "$REPO/assets/demo.gif"
+echo "DEMO OK: $(du -h "$REPO/assets/demo.gif" | cut -f1) assets/demo.gif (captioned, ${DURATION}s)"
