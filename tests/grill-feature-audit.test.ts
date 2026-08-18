@@ -407,6 +407,24 @@ describe("panel behaviours (PANEL)", () => {
 		env.component.handleInput(ctrlDigit("5"));
 		expect(env.component.render(120).join("\n")).toBe(before);
 	});
+
+	test("PANEL-23: the toggle shortcut hides a focused panel and never commits a draft", async () => {
+		const TOGGLE = "\u001b[103;7u"; // kitty CSI-u for ctrl+alt+g
+		const env = createEnv();
+		await env.start(`audit-toggle-${env.cwd}`);
+		await publish(env, [question("Q1")]);
+		expect(env.widgets.get("grill")?.[0]).toContain("[open] Esc to hide");
+		env.component.handleInput(TOGGLE);
+		expect(env.widgets.get("grill")?.[0]).toContain("[hidden] /grill-panel to open");
+		expect(env.handle.setHiddenCalls.at(-1)).toBe(true);
+
+		await env.commands.get("grill-panel").handler("", env.context);
+		env.component.handleInput(RIGHT);
+		env.component.handleInput(CTRL_N);
+		expect(env.component.render(120).join("\n")).toContain("Note for the agent");
+		env.component.handleInput(TOGGLE);
+		expect(env.widgets.get("grill")?.[0]).toContain("[open] Esc to hide");
+	});
 });
 
 describe("events and convergence (EVENT)", () => {

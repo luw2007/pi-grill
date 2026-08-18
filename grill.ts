@@ -13,6 +13,7 @@ import {
 	wrapTextWithAnsi,
 	type Component,
 	type Focusable,
+	type KeyId,
 	type OverlayHandle,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -208,21 +209,33 @@ const GrillStateSchema = Type.Object({
 });
 
 const DEFAULT_CONVERGE_KEYWORDS = ["confirm", "converge", "yes", "确认", "生成"];
+const DEFAULT_TOGGLE_SHORTCUT = Key.ctrlAlt("g");
+const TOGGLE_SHORTCUT_KEY = /^(?:[a-z]|[0-9]|escape|esc|enter|return|tab|space|backspace|delete|insert|clear|home|end|pageup|pagedown|up|down|left|right|f(?:[1-9]|1[0-2])|[`\-=\[\]\\;'\,.\/!@#$%^&*()_+|~{}:<>?])$/;
 
-type GrillConfig = { convergeKeywords: string[]; optionScrollThreshold: number };
+function isToggleShortcut(value: string): value is KeyId {
+	const parts = value.split("+");
+	const key = parts.pop();
+	if (!key || !TOGGLE_SHORTCUT_KEY.test(key) || parts.length > 3) return false;
+	return new Set(parts).size === parts.length && parts.every((part) => part === "ctrl" || part === "shift" || part === "alt");
+}
+
+type GrillConfig = { convergeKeywords: string[]; optionScrollThreshold: number; toggleShortcut: KeyId };
 const GrillConfigSchema = Type.Object({
 	convergeKeywords: Type.Optional(Type.Array(Type.String(), { minItems: 1 })),
 	optionScrollThreshold: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_OPTION_SCROLL_THRESHOLD })),
+	toggleShortcut: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
 export function parseGrillConfig(raw: unknown): GrillConfig {
-	if (raw === undefined) return { convergeKeywords: [...DEFAULT_CONVERGE_KEYWORDS], optionScrollThreshold: DEFAULT_OPTION_SCROLL_THRESHOLD };
-	if (!Value.Check(GrillConfigSchema, raw)) throw new Error(`optionScrollThreshold must be a safe integer in 1-${MAX_OPTION_SCROLL_THRESHOLD}; convergeKeywords must be a non-empty array of non-empty strings`);
-	const candidate = raw as { convergeKeywords?: string[]; optionScrollThreshold?: number };
+	if (raw === undefined) return { convergeKeywords: [...DEFAULT_CONVERGE_KEYWORDS], optionScrollThreshold: DEFAULT_OPTION_SCROLL_THRESHOLD, toggleShortcut: DEFAULT_TOGGLE_SHORTCUT };
+	if (!Value.Check(GrillConfigSchema, raw)) throw new Error(`optionScrollThreshold must be a safe integer in 1-${MAX_OPTION_SCROLL_THRESHOLD}; convergeKeywords must be a non-empty array of non-empty strings; toggleShortcut must be a Pi shortcut`);
+	const candidate = raw as { convergeKeywords?: string[]; optionScrollThreshold?: number; toggleShortcut?: string };
 	if (candidate.convergeKeywords?.some((keyword) => !keyword.trim())) throw new Error("convergeKeywords must be a non-empty array of non-empty strings");
+	if (candidate.toggleShortcut !== undefined && !isToggleShortcut(candidate.toggleShortcut)) throw new Error("toggleShortcut must be a valid Pi shortcut");
 	return {
 		convergeKeywords: candidate.convergeKeywords ?? [...DEFAULT_CONVERGE_KEYWORDS],
 		optionScrollThreshold: candidate.optionScrollThreshold ?? DEFAULT_OPTION_SCROLL_THRESHOLD,
+		toggleShortcut: candidate.toggleShortcut ?? DEFAULT_TOGGLE_SHORTCUT,
 	};
 }
 
@@ -1198,6 +1211,10 @@ function createPanelComponent(
 			refresh();
 			return;
 		}
+		if (matchesKey(data, runtime.config.toggleShortcut)) {
+			hidePanel();
+			return;
+		}
 		if (matchesKey(data, Key.ctrl("n"))) {
 			phase = "note";
 			textInput.focused = containerFocused;
@@ -1534,6 +1551,7 @@ export default function grillExtension(pi: ExtensionAPI): void {
 		closeRuntime(runtime);
 		runtimes.delete(runtime.paths.json);
 	};
+	const toggleShortcut = resolveGrillConfig(fs.existsSync(grillConfigPath()) ? fs.readFileSync(grillConfigPath(), "utf8") : undefined, () => {}).toggleShortcut;
 
 	pi.registerTool({
 		name: "grill_ask",
@@ -1567,7 +1585,7 @@ export default function grillExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerShortcut(Key.ctrlAlt("g"), {
+	pi.registerShortcut(toggleShortcut, {
 		description: "Toggle the active Grill panel",
 		handler: async (context) => {
 			if (context.mode !== "tui") return;
