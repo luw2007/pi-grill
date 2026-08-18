@@ -1,6 +1,6 @@
 {
   "name": "pi-grill",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Dependency-driven design interview for the pi coding agent. Asynchronous TUI panel, JSON state source, skip/note support, and a final implementation plan.",
   "keywords": [
     "pi-package",
