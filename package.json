@@ -29,7 +29,8 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.tests.json",
-    "check": "bun run typecheck && bun test"
+    "check": "bun run typecheck && bun test",
+    "e2e": "bash tests/e2e/run-grill-e2e.sh"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
