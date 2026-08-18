@@ -11,3 +11,12 @@ Owner: `codex_gpt/gpt-5.6-terra`
 Frozen source commit: `b5b86e791e1adb33c6f61afc08a7fda4778aa56c`.
 
 Uncommitted `README.md` and `tests/grill-responsive-navigation.test.ts` existed before dispatch and are excluded from all worker ownership.
+
+## Round 3 acceptance
+
+| Node | Role / model | Isolation | Attempt | Frozen contract | Completion signal | Worker surface UUID | Original / marked tab title | Cleanup |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| B4 | acceptance / `glm_anthropic/glm-5.2` | `../grill-wt/bug-accept-filesystem` | `bug-fs-a1-2fb3125a` | Read-only acceptance of BUG-9 and BUG-10 against source, bug records, and named regression test. No code/test/doc edits. | `.done/bug-fs-a1-2fb3125a` contains report commit SHA. | pending | pending | pending acceptance |
+| B5 | host-contract review / `claude_sub2api/claude-sonnet-5` | `../grill-wt/bug-accept-host` | `bug-host-a1-058a9132` | Read-only acceptance of BUG-11 and BUG-12 against source, README, named test, and actual host dist. No code/test/doc edits. | `.done/bug-host-a1-058a9132` contains report commit SHA. | pending | pending | pending acceptance |
+
+Frozen source: current `main` commit at ledger commit time. Existing dirty `grill.ts` and `tests/grill-responsive-navigation.test.ts` are user-owned and excluded from worker ownership.
