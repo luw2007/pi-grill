@@ -125,6 +125,14 @@ bun test
 bunx tsc -p tsconfig.tests.json
 ```
 
+Host-contract invariants (learned from real pi/OMP behaviour; changes must respect them):
+
+- A focused overlay is pi's input terminal stop: it starves every app keybinding and every `registerShortcut` chord. Any shortcut that must work while the panel is focused has to be handled inside the panel component too (that is why the toggle chord appears in both places).
+- `ctrl+digit` chords have no legacy terminal encoding — only kitty CSI-u / modifyOtherKeys forms exist. Never bind a feature to them without a fallback path.
+- OMP's native runtime can deviate from its bundled pi typings (`focus()` was missing at runtime once). Typings are not acceptance evidence for OMP; verify against the live host, and guard newly observed gaps defensively (`focus?.()`).
+- Extension messages: only `content` reaches the model; `details` is UI/transcript-only. `sendUserMessage` must always pass `deliverAs: "followUp"` — an idle check races the agent starting a run and drops the message.
+- Two sessions sharing one state file coordinate via the watcher and monotonic revisions, but truly simultaneous commits are last-rename-wins; there is deliberately no file locking.
+
 ## Acknowledgements
 
 - [mattpocock/skills — `grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling) inspired the design-interview approach: resolve a plan through focused, sequential questions.

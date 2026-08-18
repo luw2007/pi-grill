@@ -4,8 +4,7 @@
 *.log
 bun.lock
 bun.lockb
-docs/*
-!docs/bugs/
+docs/
 node_modules/
 
 .dispatch/
