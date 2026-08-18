@@ -4,6 +4,10 @@ A dependency-driven design interview for the [pi coding agent](https://github.co
 
 The agent interviews you about a plan or design one decision at a time, then writes an implementation plan once you confirm. The panel is **asynchronous**: publishing questions never blocks the agent, so it keeps investigating while you answer.
 
+![pi-grill demo: answer, refine, note, skip, custom answer, converge, plan](assets/demo.gif)
+
+*One real take: answer the recommended option → the agent instantly follows up → send an off-script note (Ctrl+N) → skip a question (Ctrl+S) → type a custom answer → confirm convergence → a plan lands in `docs/plans/` with the full interview transcript.*
+
 ## Install
 
 ```bash

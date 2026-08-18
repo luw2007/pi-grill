@@ -38,6 +38,97 @@ function say(text: string): Response {
 	return sse([chunk({ role: "assistant", content: text }, null), chunk({}, "stop")]);
 }
 
+const scenario = process.env.MOCK_SCENARIO ?? "e2e";
+let refined = false;
+
+function demoTurn(transcript: string): Response | undefined {
+	if (!published && transcript.includes("You are running a /grill design interview")) {
+		published = true;
+		return toolCall("grill_ask", {
+			questions: [
+				{
+					id: "Q1",
+					section: "1. Storage",
+					question: "Which storage layer should the sync engine use?",
+					options: [
+						{ value: "sqlite", label: "SQLite", description: "single file, transactional", recommendationReason: "zero-ops and every target platform ships it" },
+						{ value: "flat", label: "Flat JSON files", description: "diff-friendly, slow at scale" },
+						{ value: "postgres", label: "Postgres", description: "needs a server per team" },
+					],
+					recommended: "sqlite",
+				},
+				{
+					id: "Q2",
+					section: "2. Sync semantics",
+					question: "How should concurrent edits be reconciled?",
+					options: [
+						{ value: "lww", label: "Last write wins", description: "simple, may lose edits" },
+						{ value: "merge", label: "Three-way merge", description: "keeps everything, needs conflict UI" },
+					],
+					recommended: "lww",
+				},
+			],
+			converge: false,
+		});
+	}
+	if (published && !refined && transcript.includes("Q1: ")) {
+		refined = true;
+		return toolCall("grill_ask", {
+			questions: [{
+				id: "Q3",
+				section: "1. Storage",
+				question: "SQLite it is — which transport should replicate it between teammates?",
+				context: "Follows from Q1: the transport decides offline behaviour and infra cost.",
+				options: [
+					{ value: "poll", label: "HTTPS polling", description: "boring, works everywhere" },
+					{ value: "push", label: "WebSocket push", description: "instant, needs a broker" },
+				],
+			}],
+			converge: false,
+		});
+	}
+	if (refined && !converged && transcript.includes("Q3: ") && transcript.includes("skipped by the user") && transcript.includes("User note:")) {
+		converged = true;
+		return toolCall("grill_ask", {
+			questions: [{
+				id: "QF",
+				section: "9. Final",
+				question: "Ready to write the plan?",
+				options: [{ value: "confirm", label: "确认生成 plan" }],
+				recommended: "confirm",
+			}],
+			converge: true,
+		});
+	}
+	if (!planWritten && transcript.includes("The user confirmed convergence")) {
+		planWritten = true;
+		return toolCall("write", {
+			path: "docs/plans/snippets-cli-20260818-sync-engine.md",
+			content: [
+				"# Sync engine for the team snippets CLI",
+				"",
+				"## Storage",
+				"SQLite — zero-ops, transactional, ships everywhere.",
+				"",
+				"## Replication transport",
+				"Custom: CRDT log over SSH (user-provided answer).",
+				"",
+				"## Deferred",
+				"Conflict policy skipped for now; encryption out of scope for v1 (user note).",
+				"",
+				"## Interview transcript",
+				"- Q1 [answered] Which storage layer should the sync engine use? -> SQLite",
+				"- Q2 [skipped] How should concurrent edits be reconciled? (skipped by the user; still re-answerable)",
+				"- Q3 [answered] Which transport should replicate it between teammates? -> CRDT log over SSH (custom)",
+				"- QF [answered] Ready to write the plan? -> 确认生成 plan",
+				"- Note: encryption is out of scope for v1",
+				"",
+			].join("\n"),
+		});
+	}
+	return undefined;
+}
+
 Bun.serve({
 	port,
 	async fetch(request) {
@@ -48,6 +139,10 @@ Bun.serve({
 		const transcript = payload.messages.map((message) => `${message.role}: ${textOf(message)}`).join("\n---\n");
 		seen.push(transcript.slice(-2000));
 
+		if (scenario === "demo") {
+			const demo = demoTurn(transcript);
+			return demo ?? say("Noted — investigating while you answer.");
+		}
 		if (!published && transcript.includes("You are running a /grill design interview")) {
 			published = true;
 			return toolCall("grill_ask", {
