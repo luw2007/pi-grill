@@ -1,0 +1,9 @@
+# Dev overlay: load dsh-grill from this source checkout. The loader resolves
+# plugin rows against the profile directory, so the name must be absolute here;
+# the installable bundle (cordis.patch.yml) references the package by name.
+- insert:
+    - id: dsh-grill
+      name: '/Users/luwei.will/ai/grill/dsh-grill/src/index.ts'
+      config:
+        directory: '.dsh-grill'
+        convergeKeywords: ['confirm', 'converge', 'yes', '确认', '生成']
