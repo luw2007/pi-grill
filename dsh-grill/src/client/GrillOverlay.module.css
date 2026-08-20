@@ -366,3 +366,58 @@ background: #fff;
 	.subtitle, .questionHeader code, .optionDescription, .reasonLabel { color: #b7afa2; }
 	.badge { background: #2b2722; color: #eee8dd; border-color: rgba(255, 255, 255, 0.14); }
 }
+
+.rowHistoryBadge {
+	font-size: 10px;
+	color: #7b4032;
+	background: #ead6cf;
+	padding: 1px 6px;
+	border-radius: 999px;
+	align-self: flex-start;
+}
+
+.history {
+	margin: 6px 0 10px;
+}
+
+.historyToggle {
+	border: none;
+	background: transparent;
+	padding: 2px 0;
+	font: 600 12px/1.4 inherit;
+	color: #7b4032;
+	cursor: pointer;
+}
+
+.historyList {
+	margin: 6px 0 0;
+	padding-left: 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.historyEntry {
+	font-size: 12px;
+	color: #55504a;
+}
+
+.historyChoice {
+	font-weight: 600;
+}
+
+.historyReason {
+	color: #746c61;
+}
+
+.historyNote {
+	display: block;
+	font-size: 11px;
+	color: #7b4032;
+}
+
+@media (prefers-color-scheme: dark) {
+	.rowHistoryBadge { background: #4a3029; color: #e5c7be; }
+	.historyToggle { color: #e5c7be; }
+	.historyReason, .historyNote { color: #b7afa2; }
+}

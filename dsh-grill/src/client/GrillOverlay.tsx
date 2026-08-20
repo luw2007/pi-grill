@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import type { GrillQuestionView, GrillSessionView, GrillWireState } from "./port.ts";
 import { createGrillPort } from "./port.ts";
+import { groupLedgerHistory } from "./ledger-groups.ts";
 import css from "./GrillOverlay.module.css";
 
 export type GrillOverlayProps = { renderSlot?: unknown; __renders?: unknown };
@@ -73,7 +74,8 @@ export function GrillOverlay(_props: GrillOverlayProps): ReactElement | null {
 	const sessions = wire?.sessions ?? [];
 	const session = sessions.find((s) => s.sessionId === selectedSessionId) ?? sessions[0] ?? null;
 	const questions = session?.state.questions ?? [];
-	const selectedQuestion = questions.find((q) => q.id === selectedQuestionId) ?? questions.find((q) => q.status === "current") ?? questions.find((q) => q.status === "pending") ?? questions[0] ?? null;
+	const { visible, historyByParentId } = useMemo(() => groupLedgerHistory(questions), [questions]);
+	const selectedQuestion = visible.find((q) => q.id === selectedQuestionId) ?? visible.find((q) => q.status === "current") ?? visible.find((q) => q.status === "pending") ?? visible[0] ?? null;
 
 	// Keep the selection valid: newest session by default, current/pending question by default.
 	useEffect(() => {
@@ -84,13 +86,17 @@ export function GrillOverlay(_props: GrillOverlayProps): ReactElement | null {
 	}, [sessions, selectedSessionId]);
 
 	useEffect(() => {
-		const candidate = questions.find((q) => q.id === selectedQuestionId)
-			?? questions.find((q) => q.status === "current")
-			?? questions.find((q) => q.status === "pending")
-			?? questions[0]
+		const candidate = visible.find((q) => q.id === selectedQuestionId)
+			?? visible.find((q) => q.status === "current")
+			?? visible.find((q) => q.status === "pending")
+			?? visible[0]
 			?? null;
 		if (candidate && candidate.id !== selectedQuestionId) setSelectedQuestionId(candidate.id);
-	}, [questions, selectedQuestionId]);
+	}, [visible, selectedQuestionId]);
+
+	// History detail defaults to collapsed and resets whenever the selection changes.
+	const [historyOpen, setHistoryOpen] = useState(false);
+	useEffect(() => { setHistoryOpen(false); }, [selectedQuestionId]);
 
 	const run = async (action: () => Promise<{ ok: boolean; message?: string }>): Promise<void> => {
 		if (busy || !session) return;
@@ -178,10 +184,10 @@ export function GrillOverlay(_props: GrillOverlayProps): ReactElement | null {
 					</header>
 					<div className={css.body}>
 						<nav className={css.ledger} aria-label="Questions">
-							{questions.length === 0 && <p className={css.empty}>No questions yet — the agent publishes them with grill_ask.</p>}
-							{questions.map((q) => {
+							{visible.length === 0 && <p className={css.empty}>No questions yet — the agent publishes them with grill_ask.</p>}
+							{visible.map((q) => {
 								const active = q.id === selectedQuestion?.id;
-								const answerable = q.status === "pending" || q.status === "current" || q.status === "answered" || q.status === "skipped";
+								const historyCount = historyByParentId[q.id]?.length ?? 0;
 								return (
 									<button
 										key={q.id}
@@ -198,6 +204,9 @@ export function GrillOverlay(_props: GrillOverlayProps): ReactElement | null {
 										<span className={css.rowStatus}>{STATUS_LABEL[q.status] ?? q.status}</span>
 										<span className={css.rowQuestion}>{q.question}</span>
 										{q.userChoice && <span className={css.rowChoice}>{q.userChoice}</span>}
+										{historyCount > 0 && (
+											<span className={css.rowHistoryBadge}>{historyCount} re-answer{historyCount === 1 ? "" : "s"}</span>
+										)}
 									</button>
 								);
 							})}
@@ -218,6 +227,29 @@ export function GrillOverlay(_props: GrillOverlayProps): ReactElement | null {
 										<p className={css.choice}>Answer: {selectedQuestion.userChoice}{selectedQuestion.reason ? " — " + selectedQuestion.reason : ""}</p>
 									)}
 									{selectedQuestion.statusNote && <p className={css.statusNote}>{selectedQuestion.statusNote}</p>}
+									{historyByParentId[selectedQuestion.id] && historyByParentId[selectedQuestion.id]!.length > 0 && (
+										<div className={css.history}>
+											<button
+												type="button"
+												className={css.historyToggle}
+												aria-expanded={historyOpen}
+												onClick={() => setHistoryOpen((value) => !value)}
+											>
+												{historyOpen ? "▾" : "▸"} History ({historyByParentId[selectedQuestion.id]!.length} re-answer{historyByParentId[selectedQuestion.id]!.length === 1 ? "" : "s"})
+											</button>
+											{historyOpen && (
+												<ol className={css.historyList}>
+													{historyByParentId[selectedQuestion.id]!.map((entry) => (
+														<li key={entry.id} className={css.historyEntry}>
+															<span className={css.historyChoice}>{entry.userChoice}</span>
+															{entry.reason && <span className={css.historyReason}> — {entry.reason}</span>}
+															{entry.statusNote && <span className={css.historyNote}>{entry.statusNote}</span>}
+														</li>
+													))}
+												</ol>
+											)}
+										</div>
+									)}
 									<div className={css.options}>
 										{optionsFor(selectedQuestion).map((option) => {
 											const recommended = selectedQuestion.recommended !== undefined && option.value === selectedQuestion.recommended;
