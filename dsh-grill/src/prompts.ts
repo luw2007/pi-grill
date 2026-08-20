@@ -13,7 +13,6 @@ import { stateSummary } from "./state.ts";
 export type InterviewFacts = {
 	content: string;
 	statePath: string;
-	htmlPath: string;
 	state: GrillState;
 };
 
@@ -23,7 +22,6 @@ export function buildInterviewPrompt(facts: InterviewFacts): string {
 Hard constraints:
 - Initial idea: ${facts.content}
 - Single source of truth (JSON): ${facts.statePath}
-- External HTML mirror: ${facts.htmlPath}
 - Every grill_ask result carries the latest state summary (section index + open questions). Use it to continue; only read the full JSON when auditing deprecated/removed history or right before writing the plan.
 - You may edit the JSON with the built-in write tool, but you must preserve schemaVersion, questions, notes, ui, and the status machine. \`ui\` is required recoverable UI state. The wording and options of answered questions are immutable. Invalid JSON is rejected by the extension.
 - Always use grill_ask to ask the user; never substitute plain text for the interactive panel. Publish every decision whose dependencies are already resolved in one batch instead of waiting question by question.
@@ -34,7 +32,6 @@ Hard constraints:
 - In the panel the user can skip a question (status becomes \`skipped\`; it does not block convergence and stays re-answerable), send a note that is not tied to any question, and re-answer an answered question (the old answer becomes \`deprecated\`). When you receive a skip, a note or a re-answer, decide whether to ask a better question or change direction instead of repeating the same one.
 - Convergence is dependency-driven: once there are no pending/current questions and no unresolved dependencies, use grill_ask with converge=true to ask the final "write the plan?" question. Only write the plan with write/edit after the user confirms.
 - The final "## Interview transcript" section is always required and must be the final level-2 heading.
-- The HTML file is only a JSON-driven mirror; the interactive surface is the web panel, never literal HTML.
 
 ${stateSummary(facts.state)}`;
 }

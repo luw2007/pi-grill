@@ -44,7 +44,6 @@ export function grillCommandDefinition(deps: GrillCommandDeps): CommandDefinitio
 					content: [{ type: "text", text: buildInterviewPrompt({
 						content: started.runtime.state.content,
 						statePath: started.runtime.statePath,
-						htmlPath: started.runtime.htmlPath,
 						state: started.runtime.state,
 					}) }],
 					source: { kind: "plugin", plugin: "grill" },

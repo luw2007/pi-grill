@@ -25,7 +25,7 @@ import {
 	type GrillState,
 } from "./state.ts";
 import { buildInterviewPrompt, planPrompt } from "./prompts.ts";
-import { readJsonState, renderHtml, sessionPaths, writeAtomic, type SessionPaths } from "./persist.ts";
+import { readJsonState, sessionPaths, writeAtomic, type SessionPaths } from "./persist.ts";
 import {
 	addQuestions as addQuestionsLocal,
 	deprecateQuestions as deprecateLocal,
@@ -76,10 +76,6 @@ export class GrillRuntime {
 		return this.paths.json;
 	}
 
-	get htmlPath(): string {
-		return this.paths.html;
-	}
-
 	private liveAgent(): Agent | undefined {
 		return this.deps.agents.get(this.agentId);
 	}
@@ -88,7 +84,6 @@ export class GrillRuntime {
 		const error = validateState(next, this.state, atomicAnswerIds);
 		if (error) return error;
 		writeAtomic(this.paths.json, JSON.stringify(next, null, 2) + "\n");
-		renderHtml(this.paths, next);
 		this.state = next;
 		this.deps.broadcast(this.agentId);
 		return undefined;
@@ -113,7 +108,6 @@ export class GrillRuntime {
 		const error = validateState(next);
 		if (error) return { ok: false, message: error };
 		writeAtomic(this.paths.json, JSON.stringify(next, null, 2) + "\n");
-		renderHtml(this.paths, next);
 		this.state = next;
 		this.started = true;
 		this.deps.broadcast(this.agentId);
@@ -125,7 +119,6 @@ export class GrillRuntime {
 		return buildInterviewPrompt({
 			content: this.state.content,
 			statePath: this.paths.json,
-			htmlPath: this.paths.html,
 			state: this.state,
 		});
 	}

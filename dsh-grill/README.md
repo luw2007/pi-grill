@@ -8,7 +8,7 @@ A dependency-driven design interview plugin for the DeepSeek Harness **web GUI**
 - **Global floating panel** (`shell.overlay`) — badge with the open-question count; a ledger of every question grouped by section, the current question with options, recommendation badges, custom answers, skip, re-answer (the old answer stays as a `deprecated` row), and free-form notes for the agent.
 - **Answer delivery** — answers, skips and notes are steered into the agent loop as user messages (same wording as pi-grill), so the interview transcript stays coherent.
 - **Convergence** — once nothing is pending/current, the agent asks the final write-the-plan question; confirming hands the agent the plan prompt and it writes the implementation plan to `docs/plans/` (or `plans/`) with the full interview transcript.
-- **Durable state** — JSON + HTML mirror per interview, schema v4 compatible with pi-grill, under `<cwd>/.dsh-grill/` (configurable). A session started in pi can resume here and vice versa.
+- **Durable state** — JSON per interview, schema v4 compatible with pi-grill, under `<cwd>/.dsh-grill/` (configurable). A session started in pi can resume here and vice versa.
 
 ## Install
 
@@ -46,12 +46,12 @@ The dev overlay loads `src/index.ts` directly (the loader resolves plugin rows a
 
 | key | default | meaning |
 | --- | --- | --- |
-| `directory` | `.dsh-grill` | where per-interview JSON + HTML files live (relative to the session cwd) |
+| `directory` | `.dsh-grill` | where per-interview JSON files live (relative to the session cwd) |
 | `convergeKeywords` | `[confirm, converge, yes, 确认, 生成]` | answer keywords that confirm convergence |
 
 ## Architecture
 
-- **Host half** (`src/`): `state.ts` state machine (ported from pi-grill, no TUI), `runtime.ts` per-agent interview runtime (persistence, answer batching, steer delivery, convergence), `tool.ts` (`grill_ask`), `command.ts` (`/grill`), `routes.ts` (`/grill/state`, `/grill/answer`, `/grill/skip`, `/grill/note`, `/grill/events` SSE), `persist.ts` (JSON + HTML mirror), `prompts.ts`.
+- **Host half** (`src/`): `state.ts` state machine (ported from pi-grill, no TUI), `runtime.ts` per-agent interview runtime (persistence, answer batching, steer delivery, convergence), `tool.ts` (`grill_ask`), `command.ts` (`/grill`), `routes.ts` (`/grill/state`, `/grill/answer`, `/grill/skip`, `/grill/note`, `/grill/events` SSE), `persist.ts` (atomic JSON persistence), `prompts.ts`.
 - **Browser half** (`src/client/`): `port.ts` (fetch + SSE client), `GrillOverlay.tsx` (badge + panel) registered into the `shell.overlay` slot.
 - **Transport**: plain HTTP routes on the host `webServer` service plus an SSE change channel — no in-tree Typert/Remote wiring needed (out-of-tree bundles cannot enter the compiled remote allowlist). The host is the single authority; the panel re-reads `/grill/state` after every change event.
 
