@@ -44,7 +44,7 @@ Ordinary options commit on `Enter`. Options marked `requiresText`, and the built
 
 On short terminals the panel fits itself to the window: the ledger shrinks first, and if content still overflows, the middle is elided with a `… N lines hidden` marker so the answer area and footer stay visible and interactive.
 
-After a successful answer or skip, the panel hides while the agent continues investigating. Publishing a new question reopens it, selects that batch's current question, and scrolls the ledger until it is visible.
+After a successful answer or skip, the panel stays open and jumps to the next open question if the current batch still has one. It only hides once every published question is answered, skipped, or superseded — the agent needs to investigate or publish more. Publishing a new question also reopens it, selects that batch's current question, and scrolls the ledger until it is visible.
 
 ### Commands
 

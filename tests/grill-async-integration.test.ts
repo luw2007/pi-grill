@@ -243,6 +243,25 @@ describe("asynchronous grill integration", () => {
 		expect(env.handle.setHiddenCalls).toEqual([false, true, false, true, false, true]);
 	});
 
+	test("keeps the panel open across a multi-question batch, hiding only once every question is resolved", async () => {
+		const env = setup();
+		await env.kickoff;
+		await publish(env, ["Q1", "Q2", "Q3"]);
+		expect(env.handle.setHiddenCalls).toEqual([false]);
+
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\r"); // answer Q1 — Q2/Q3 still pending, panel must stay open
+		expect(env.handle.setHiddenCalls).toEqual([false]);
+		expect(env.component.render(120).join("\n")).toContain("Q2");
+
+		env.component.handleInput("\u0013"); // skip Q2 — Q3 still pending, panel must stay open
+		expect(env.handle.setHiddenCalls).toEqual([false]);
+
+		env.component.handleInput("\u001b[C");
+		env.component.handleInput("\r"); // answer Q3 — nothing open left, panel hides
+		expect(env.handle.setHiddenCalls).toEqual([false, true]);
+	});
+
 	test("renders context between question and options, pins it, and omits it from HTML", async () => {
 		const env = setup();
 		await env.kickoff;

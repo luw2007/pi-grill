@@ -1020,7 +1020,9 @@ function commitPanelAnswer(runtime: Runtime, pi: ExtensionAPI, answer: AskAnswer
 			status: committed?.status ?? "answered",
 		});
 		maybeConfirmConvergence(runtime, pi, answer, onSessionFinished);
-		hideRuntimePanel(runtime);
+		// Keep the panel open while the same batch still has open questions; only hide once
+		// there is nothing left to answer, so the agent can investigate or publish more.
+		if (canConverge(runtime.state)) hideRuntimePanel(runtime);
 		return true;
 	} catch (error) {
 		notify(runtime.context, `grill failed to write the answer: ${error instanceof Error ? error.message : String(error)}`, "error");
@@ -1040,7 +1042,7 @@ function commitPanelSkip(runtime: Runtime, pi: ExtensionAPI, id: string): boolea
 		}, runtime.config.optionScrollThreshold);
 		runtime.pendingConvergenceQuestionIds.delete(id);
 		ensureAnswerEvents(runtime, pi).enqueue({ id, value: "__skipped__", label: SKIP_STATUS_NOTE, index: 0, reason: "", status: "skipped" });
-		hideRuntimePanel(runtime);
+		if (canConverge(runtime.state)) hideRuntimePanel(runtime);
 		return true;
 	} catch (error) {
 		notify(runtime.context, `grill failed to write the skip: ${error instanceof Error ? error.message : String(error)}`, "error");
